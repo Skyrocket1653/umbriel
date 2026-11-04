@@ -952,7 +952,7 @@ namespace umbriel {
 
     bool m_nested = false;
     bool m_stopping = false;
-    bool m_applicationScopesRequired = false;
+    bool m_systemdManaged = false;
     bool m_sessionShutdownAvailable = false;
     bool m_sessionExitRequested = false;
     int m_sessionExitResultFd = -1;

@@ -399,7 +399,12 @@ namespace umbriel {
     const registry::Fields<Config::General>& generalFields() {
       using registry::boolean;
       using G = Config::General;
+      const auto self = [](auto& general) -> auto& { return general; };
+      static const registry::Fields<G> systemd{
+          boolean("app_scopes", &G::systemdAppScopes),
+      };
       static const registry::Fields<G> fields{
+          registry::table<G>("systemd", self, systemd),
           registry::choice(
               "mod_key", &G::modKey,
               {
