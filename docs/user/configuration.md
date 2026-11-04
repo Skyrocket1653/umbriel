@@ -109,6 +109,7 @@ xwayland_primary_output = ""
 nvidia_sync_workaround = true
 show_cheatsheet = true
 focus_on_activate = false
+systemd.app_scopes = true
 attach_modal_dialogs = true
 honor_restored_maximize = false
 ```
@@ -124,6 +125,7 @@ honor_restored_maximize = false
 | `nvidia_sync_workaround`     | bool         | `true`                    | Wait for GPU completion on composed NVIDIA outputs without explicit synchronization. Applies on reload. See [NVIDIA synchronization](#nvidia-synchronization).                       |
 | `show_cheatsheet`            | bool         | `true`                    | Show the keybind cheatsheet when Umbriel starts.                                                                                                                                     |
 | `focus_on_activate`          | bool         | `false`                   | Let application activation requests focus and reveal their target.                                                                                                                   |
+| `systemd.app_scopes`         | bool         | `true`                    | Launch commands in user scopes in a systemd-managed native session. Set false when another launcher, such as UWSM, manages applications. Reload affects future launches.             |
 | `attach_modal_dialogs`       | bool         | `true`                    | Attach a modal dialog to its parent, so it follows the parent and holds its input. See [Dialogs](layout.md#dialogs).                                                                 |
 | `honor_restored_maximize`    | bool         | `false`                   | Honor maximize requests an application makes while its window opens, until it acknowledges its opening layout.                                                                       |
 
