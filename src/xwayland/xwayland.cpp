@@ -5,6 +5,7 @@
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "server/server.h"
+#include "view/view.h"
 #include "wlr.h"
 #include "xwayland/primary.h"
 #include "xwayland/shape.h"
@@ -12,11 +13,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
 #include <format>
+#include <limits>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
@@ -212,6 +215,65 @@ namespace umbriel {
     }
     const auto found = std::ranges::find(m_windows, xsurface, &XwaylandWindow::xsurface);
     return found != m_windows.end() ? (*found)->scale() : 1.0;
+  }
+
+  std::optional<std::array<double, 2>> Xwayland::pointerPosition(wlr_xwayland_surface* surface) const {
+    if (m_wlr == nullptr || surface == nullptr || surface->surface == nullptr) {
+      return std::nullopt;
+    }
+    xcb_connection_t* connection = wlr_xwayland_get_xwm_connection(m_wlr);
+    if (connection == nullptr || xcb_connection_has_error(connection) != 0) {
+      return std::nullopt;
+    }
+    auto* reply = xcb_query_pointer_reply(connection, xcb_query_pointer(connection, surface->window_id), nullptr);
+    if (reply == nullptr) {
+      return std::nullopt;
+    }
+    std::optional<std::array<double, 2>> position;
+    if (reply->same_screen) {
+      position = std::array<double, 2>{static_cast<double>(reply->win_x), static_cast<double>(reply->win_y)};
+    }
+    std::free(reply);
+    return position;
+  }
+
+  bool Xwayland::restorePointerPosition(wlr_xwayland_surface* surface, double x, double y) {
+    if (m_wlr == nullptr
+        || surface == nullptr
+        || surface->surface == nullptr
+        || !std::isfinite(x)
+        || !std::isfinite(y)
+        || m_server.sessionLocked()) {
+      return false;
+    }
+    xcb_connection_t* connection = wlr_xwayland_get_xwm_connection(m_wlr);
+    if (connection == nullptr || xcb_connection_has_error(connection) != 0) {
+      return false;
+    }
+    constexpr int maximum = std::numeric_limits<int16_t>::max();
+    const auto localX = static_cast<int16_t>(std::clamp(
+        std::round(x), 0.0, static_cast<double>(std::min(maximum, std::max(0, static_cast<int>(surface->width) - 1)))
+    ));
+    const auto localY = static_cast<int16_t>(std::clamp(
+        std::round(y), 0.0, static_cast<double>(std::min(maximum, std::max(0, static_cast<int>(surface->height) - 1)))
+    ));
+    if (const auto current = pointerPosition(surface); current && (*current)[0] == localX && (*current)[1] == localY) {
+      // Native handoffs commonly retain the exact baseline. Avoid even a synthetic warp in that working case.
+      return true;
+    }
+    // wlr_xwayland_surface_activate uses this same XWM connection. The warp must precede its SetInputFocus request;
+    // flushing a Wayland pointer enter cannot provide that ordering. One checked request per restore also catches
+    // an unmapped/destroyed X window instead of silently declaring its baseline installed.
+    auto* error = xcb_request_check(
+        connection, xcb_warp_pointer_checked(connection, XCB_NONE, surface->window_id, 0, 0, 0, 0, localX, localY)
+    );
+    if (error != nullptr) {
+      kLog.warn("Xwayland pointer restore failed window={} error={}", surface->window_id, error->error_code);
+      std::free(error);
+      return false;
+    }
+    kLog.debug("Xwayland pointer restored before activation window={} x={} y={}", surface->window_id, localX, localY);
+    return true;
   }
 
   bool Xwayland::ownsSurface(const wlr_surface* surface) const {
@@ -434,10 +496,134 @@ namespace umbriel {
     wl_event_source_timer_update(m_selectionRefreshTimer, 1);
   }
 
-  void Xwayland::clearFocus() {
+  void Xwayland::preparePointerTarget(wlr_surface* surface, bool waitForServer) {
+    if (surface == nullptr || m_server.sessionLocked()) {
+      return;
+    }
+    auto* target = wlr_xwayland_surface_try_from_wlr_surface(wlr_surface_get_root_surface(surface));
+    if (target == nullptr) {
+      return;
+    }
+    bool restacked = false;
+    for (const auto& view : m_server.registry().all()) {
+      if (view->mapped() && view->xwayland() && view->xwaylandSurface() != target && view->preservesXwaylandFocus()) {
+        const auto* retained = view->xwaylandSurface();
+        if (retained->x + retained->width <= target->x
+            || target->x + target->width <= retained->x
+            || retained->y + retained->height <= target->y
+            || target->y + target->height <= retained->y) {
+          continue;
+        }
+        // Scene restacking compares layout boxes. A retained game's X origin no longer follows that box, so its X
+        // window can cover the incoming client even when the scene boxes are disjoint. Focus does not fix X hit tests.
+        // Lower only retained games relative to this target, preserving the target's own popup/transient stack.
+        wlr_xwayland_surface_restack(view->xwaylandSurface(), target, XCB_STACK_MODE_BELOW);
+        kLog.debug(
+            "Xwayland pointer stack target={} retained={} wait={}", target->window_id, retained->window_id,
+            waitForServer
+        );
+        restacked = true;
+      }
+    }
+    if (!restacked) {
+      return;
+    }
     xcb_connection_t* connection = wlr_xwayland_get_xwm_connection(m_wlr);
     if (connection == nullptr) {
       return;
+    }
+    if (waitForServer) {
+      // XWM stacking requests and Wayland pointer events use different sockets. Complete stacking before queuing a
+      // button, rather than relying on which socket Xwayland happens to dispatch first. No per-frame round trips.
+      std::free(xcb_get_input_focus_reply(connection, xcb_get_input_focus(connection), nullptr));
+    } else {
+      xcb_flush(connection);
+    }
+  }
+
+  View* Xwayland::keyboardFocusOwner() const {
+    xcb_connection_t* connection = wlr_xwayland_get_xwm_connection(m_wlr);
+    if (connection == nullptr) {
+      return nullptr;
+    }
+    auto* focus = xcb_get_input_focus_reply(connection, xcb_get_input_focus(connection), nullptr);
+    xcb_window_t window = focus != nullptr ? focus->focus : static_cast<xcb_window_t>(XCB_NONE);
+    std::free(focus);
+    const auto managed = [this](xcb_window_t id) -> View* {
+      for (const auto& view : m_server.registry().all()) {
+        if (view->mapped() && view->xwayland() && view->xwaylandSurface()->window_id == id) {
+          return view.get();
+        }
+      }
+      return nullptr;
+    };
+    while (window != XCB_NONE && window != XCB_INPUT_FOCUS_POINTER_ROOT) {
+      if (View* view = managed(window)) {
+        return view;
+      }
+      // An override-redirect menu may be a root sibling rather than an X child of its managed owner. Preserve that
+      // family's focus instead of treating its legitimate popup as an unrelated focus theft.
+      for (const auto& entry : m_windows) {
+        const auto* popup = entry->xsurface();
+        if (popup->window_id != window || !popup->override_redirect) {
+          continue;
+        }
+        auto* parent = popup->parent;
+        for (size_t depth = 0; parent != nullptr && depth < m_windows.size(); ++depth, parent = parent->parent) {
+          if (View* view = managed(parent->window_id)) {
+            return view;
+          }
+        }
+      }
+      auto* tree = xcb_query_tree_reply(connection, xcb_query_tree(connection, window), nullptr);
+      if (tree == nullptr) {
+        return nullptr;
+      }
+      const xcb_window_t parent = tree->parent;
+      std::free(tree);
+      if (parent == window) {
+        return nullptr;
+      }
+      window = parent;
+    }
+    return nullptr;
+  }
+
+  void Xwayland::activateSurface(wlr_xwayland_surface* surface) {
+    if (surface == nullptr || surface->override_redirect) {
+      return;
+    }
+    View* owner = keyboardFocusOwner();
+    if (owner == nullptr || owner->xwaylandSurface() != surface) {
+      // activate(true) may be a no-op if XWM still caches this window as focused after core focus was cleared.
+      // Retire that record first. Pointer restoration already precedes this operation, including PointerRoot.
+      wlr_xwayland_surface_activate(surface, false);
+    }
+    wlr_xwayland_surface_activate(surface, true);
+  }
+
+  void Xwayland::clearFocus(bool force) {
+    xcb_connection_t* connection = wlr_xwayland_get_xwm_connection(m_wlr);
+    if (connection == nullptr) {
+      return;
+    }
+    if (!force && !m_server.sessionLocked()) {
+      const auto& views = m_server.registry().all();
+      const bool eligible = std::ranges::any_of(views, [](const auto& view) {
+        return view->mapped() && view->xwayland() && view->preservesXwaylandFocus();
+      });
+      if (eligible) {
+        if (View* owner = keyboardFocusOwner(); owner != nullptr && owner->preservesXwaylandFocus()) {
+          return;
+        }
+      }
+    }
+    // Keep XWM's cached owner and the core X server in agreement. The API only deactivates the matching cached
+    // surface; all other calls are no-ops. Include unmanaged wrappers and unmapped owners whose record may linger.
+    for (const auto& window : m_windows) {
+      if (!window->xsurface()->override_redirect) {
+        wlr_xwayland_surface_activate(window->xsurface(), false);
+      }
     }
     constexpr xcb_window_t kNoWindow = XCB_WINDOW_NONE;
     xcb_set_input_focus(connection, XCB_INPUT_FOCUS_NONE, kNoWindow, XCB_CURRENT_TIME);

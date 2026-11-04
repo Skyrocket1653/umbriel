@@ -492,3 +492,10 @@ action = "overview-open"
 # match.namespace = "^vicinae$"
 # dim_behind = 0.5
 # Window rules accept dim_behind too; see docs/user/window-rules.md.
+
+# Optional Xwayland game compatibility (replace the app ID).
+# [[window_rule]]
+# match.is_xwayland = true
+# match.app_id = "^YOUR_GAME_APP_ID$"
+# xwayland_preserve_focus = true
+# xwayland_restore_pointer = true

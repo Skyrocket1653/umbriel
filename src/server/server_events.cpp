@@ -1036,6 +1036,10 @@ namespace umbriel {
     }
     showConfigDiagnostics();
     markDirty(Dirty::Cheatsheet);
+    if (m_xwayland != nullptr) {
+      // Re-evaluate retained X focus after a rule was disabled or removed.
+      m_xwayland->scheduleFocusClear();
+    }
     if (m_configWatcher != nullptr) {
       m_configWatcher->watch(configWatchPaths());
     }
@@ -3611,6 +3615,19 @@ namespace umbriel {
         && surface != nullptr
         && wlr_xwayland_surface_try_from_wlr_surface(surface) == nullptr;
 
+    // Layer-shell and other direct seat handoffs do not all pass through FocusManager::focusView.
+    // Respect a grab that may reject this enter; an accepted transfer must first release the old game's input.
+    if (previous != nullptr
+        && surface != nullptr
+        && wlr_surface_get_root_surface(previous) != wlr_surface_get_root_surface(surface)
+        && (grab == KeyboardGrab::Bypass || !wlr_seat_keyboard_has_grab(seat))) {
+      if (View* view = View::fromSurface(wlr_surface_get_root_surface(previous));
+          view != nullptr && (view->preservesXwaylandFocus() || view->restoresXwaylandPointer())) {
+        clearClientInputPreservingActivation();
+        m_cursor->releaseRuleConfinement(*view);
+      }
+    }
+
     if (config().input.keyboard.trackLayout == TrackLayout::Window) {
       if (const auto state = keyboardLayoutState();
           state.has_value() && state->currentIndex < state->names.size() && !state->names.empty()) {
@@ -3705,6 +3722,7 @@ namespace umbriel {
   void Server::clearClientInputPreservingActivation() {
     // Keep this order shared with overview: keyboard leave, pointer leave, then constraint deactivation.
     // In particular, do not apply a locked-pointer cursor hint after entering the incoming client.
+    m_cursor->rememberLockedXwaylandPointer();
     clearKeyboardFocus(false);
     m_cursor->clearPointerFocus();
     m_cursor->clearConstraint();

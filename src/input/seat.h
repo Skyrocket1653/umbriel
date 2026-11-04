@@ -32,6 +32,7 @@ namespace umbriel {
     static void onRequestCursor(wl_listener* listener, void* data);
     static void onRequestSetShape(wl_listener* listener, void* data);
     static void onPointerFocusChange(wl_listener* listener, void* data);
+    static void onKeyboardFocusChange(wl_listener* listener, void* data);
     static void onRequestSetSelection(wl_listener* listener, void* data);
     static void onRequestSetPrimarySelection(wl_listener* listener, void* data);
     static void onRequestStartDrag(wl_listener* listener, void* data);
@@ -58,6 +59,7 @@ namespace umbriel {
     wl_listener m_requestCursor{};
     wl_listener m_requestSetShape{};
     wl_listener m_pointerFocusChange{};
+    wl_listener m_keyboardFocusChange{};
     wl_listener m_requestSetSelection{};
     wl_listener m_requestSetPrimarySelection{};
     wl_listener m_requestStartDrag{};
