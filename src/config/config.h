@@ -1,4 +1,5 @@
 #pragma once
+#include "config/chalk.h"
 #include "config/config_diag.h"
 #include "config/effects.h"
 #include "config/keybind_parse.h"
@@ -504,6 +505,10 @@ namespace umbriel {
     std::optional<std::array<float, 4>> borderColorOuter;
     // Override [appearance] border_width, outer_border_width, corner_radius, and shadow.enabled for windows this rule
     // matches.
+    std::optional<BorderStyle> borderStyle;
+    std::optional<BorderPlacement> borderPlacement;
+    std::optional<bool> borderInCapture;
+    ChalkSettings borderChalk;
     std::optional<int> borderWidth;
     std::optional<int> outerBorderWidth;
     std::optional<int> cornerRadius;
@@ -570,6 +575,10 @@ namespace umbriel {
           && borderColorFocused == other.borderColorFocused
           && borderColorUnfocused == other.borderColorUnfocused
           && borderColorOuter == other.borderColorOuter
+          && borderStyle == other.borderStyle
+          && borderPlacement == other.borderPlacement
+          && borderInCapture == other.borderInCapture
+          && borderChalk == other.borderChalk
           && borderWidth == other.borderWidth
           && outerBorderWidth == other.outerBorderWidth
           && cornerRadius == other.cornerRadius
@@ -621,6 +630,10 @@ namespace umbriel {
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;
+    std::optional<BorderStyle> borderStyle;
+    std::optional<BorderPlacement> borderPlacement;
+    std::optional<bool> borderInCapture;
+    ChalkSettings borderChalk;
     std::optional<int> borderWidth;
     std::optional<int> outerBorderWidth;
     std::optional<int> cornerRadius;
@@ -757,6 +770,15 @@ namespace umbriel {
     } colors;
 
     struct Appearance {
+      struct Border {
+        bool inCapture = false;
+        ChalkSettings chalk;
+        bool operator==(const Border&) const = default;
+      } border;
+      struct Screen {
+        ScreenInnerBorder innerBorder;
+        bool operator==(const Screen&) const = default;
+      } screen;
       struct TitleBar {
         TitleBarMode mode = TitleBarMode::Off;
         int height = 28;

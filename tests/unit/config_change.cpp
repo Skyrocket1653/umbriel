@@ -834,6 +834,7 @@ UMBRIEL_TEST(outputScreenCastEffectEditRebindsEffects) {
   CHECK(!ConfigEffects::between(after, after).effects);
 }
 
+// The unfocused cast selector is read when focus moves or a capture starts, so an edit must rebind effects too.
 UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   Config before;
   OutputRule output;
@@ -879,6 +880,10 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   Config changedEdgesMatcher = forcedByRule;
   changedEdgesMatcher.windowRules[0].matchMaximizedToEdges = true;
   CHECK(ConfigEffects::between(forcedByRule, changedEdgesMatcher).tearingPolicy);
+
+  Config changedFullscreenMatcher = forcedByRule;
+  changedFullscreenMatcher.windowRules[0].matchFullscreen = true;
+  CHECK(ConfigEffects::between(forcedByRule, changedFullscreenMatcher).tearingPolicy);
 
   Config changedPinnedMatcher = forcedByRule;
   changedPinnedMatcher.windowRules[0].matchPinned = true;

@@ -398,7 +398,130 @@ namespace umbriel {
   void View::updateBorderGeometry(int contentWidth, int contentHeight) {
     syncSsdFrame();
     m_decoration.updateBorderGeometry(contentWidth, contentHeight, titleBarHeight());
+    syncNativeBorder(contentWidth, contentHeight);
     layoutChromeAttachment(contentWidth, contentHeight);
+  }
+
+  void View::syncNativeBorder(int contentWidth, int contentHeight) {
+    const auto& rule = resolvedRules();
+    auto* outer = m_decoration.borderNode();
+    if (!rule.borderStyle && !rule.borderPlacement && m_insetBorder == nullptr && !m_chalkBorder) {
+      return;
+    }
+    const auto style = rule.borderStyle.value_or(BorderStyle::Solid);
+    const bool inset = rule.borderPlacement.value_or(BorderPlacement::Outside) == BorderPlacement::Inset;
+    const int width = std::min(
+        rule.borderWidth.value_or(config().appearance.borderWidth), (std::min(contentWidth, contentHeight) - 1) / 2
+    );
+    const bool showInset = m_mapped && inset && style != BorderStyle::Off && width > 0;
+    if (showInset && m_insetBorder == nullptr && m_contentTree != nullptr) {
+      const float color[4]{};
+      m_insetBorder = wlr_scene_border_create(m_contentTree, color, color);
+    }
+    if (outer != nullptr) {
+      wlr_scene_node_set_enabled(&outer->node, !inset && style != BorderStyle::Off);
+    }
+    const bool chalk = m_mapped
+        && style == BorderStyle::Chalk
+        && (inset ? showInset && m_insetBorder != nullptr : outer != nullptr && decorated());
+    auto settings = config().appearance.border.chalk;
+    settings.overlay(rule.borderChalk);
+    bool changed = false;
+    if (chalk || m_chalkBorder) {
+      if (!m_chalkBorder) {
+        m_chalkBorder = std::make_unique<ChalkBorder>(wl_display_get_event_loop(m_server->display()), [this] {
+          auto* out = currentOutput();
+          if (!m_mapped || m_server->sessionLocked() || out == nullptr) {
+            return false;
+          }
+          const wlr_box box = out->layoutBox();
+          auto* outer = m_decoration.borderNode();
+          for (auto* node : {outer, m_insetBorder}) {
+            if (node != nullptr && node->draw_pattern != nullptr && wlr_scene_node_visible_in_box(&node->node, &box)) {
+              wlr_scene_border_damage(node);
+              return true;
+            }
+          }
+          return false;
+        });
+      }
+      changed = m_chalkBorder->configure(settings, chalk);
+      m_chalkBorder->setOpacity(effectiveOpacity());
+    }
+    if (outer != nullptr) {
+      wlr_scene_border_set_pattern(
+          outer, chalk && !inset ? ChalkBorder::draw : nullptr, chalk && !inset ? m_chalkBorder.get() : nullptr
+      );
+      if (changed && chalk && !inset) {
+        wlr_scene_border_damage(outer);
+      }
+    }
+    const bool captureInset = showInset
+        && m_captureScene != nullptr
+        && m_server->viewCaptured(*this)
+        && rule.borderInCapture.value_or(config().appearance.border.inCapture);
+    if (captureInset && m_captureInsetBorder == nullptr) {
+      const float color[4]{};
+      m_captureInsetBorder = wlr_scene_border_create(&m_captureScene->tree, color, color);
+    }
+
+    const bool captureChalk = captureInset && m_captureInsetBorder != nullptr && style == BorderStyle::Chalk;
+    bool captureChanged = false;
+    if (captureChalk || m_captureChalkBorder) {
+      if (!m_captureChalkBorder) {
+        m_captureChalkBorder = std::make_unique<ChalkBorder>(wl_display_get_event_loop(m_server->display()), [this] {
+          if (!m_mapped
+              || m_server->sessionLocked()
+              || m_captureInsetBorder == nullptr
+              || !m_captureInsetBorder->node.enabled) {
+            return false;
+          }
+          wlr_scene_border_damage(m_captureInsetBorder);
+          return true;
+        });
+      }
+      captureChanged = m_captureChalkBorder->configure(std::move(settings), captureChalk);
+      if (captureChanged && captureChalk && m_chalkBorder) {
+        m_captureChalkBorder->inheritPhase(*m_chalkBorder);
+      }
+      m_captureChalkBorder->setOpacity(effectiveOpacity());
+    }
+
+    const auto updateInset = [&](wlr_scene_border* node, bool visible, ChalkBorder* pattern, bool dirty) {
+      if (node == nullptr) {
+        return;
+      }
+      if (!visible) {
+        wlr_scene_node_set_enabled(&node->node, false);
+      }
+      wlr_scene_border_set_pattern(node, pattern != nullptr ? ChalkBorder::draw : nullptr, pattern);
+      if (!visible) {
+        return;
+      }
+
+      const int radius = std::clamp(surfaceRadius(), 0, std::min(contentWidth, contentHeight) / 2);
+      const auto corners = corner_radii_all(radius);
+      wlr_scene_border_set_geometry(
+          node, contentWidth, contentHeight, width, 0,
+          {.area = {width, width, contentWidth - 2 * width, contentHeight - 2 * width},
+           .corners = corner_radii_all(std::max(0, radius - width)),
+           .inside = false},
+          corners, corners
+      );
+      wlr_scene_node_raise_to_top(&node->node);
+      const auto& colors = m_decoration.borderColors();
+      float color[4];
+      premultiplied(color, m_borderFocusedState ? colors.focused : colors.unfocused, effectiveOpacity());
+      wlr_scene_border_set_colors(node, color, color);
+      wlr_scene_node_set_enabled(&node->node, true);
+      if (dirty) {
+        wlr_scene_border_damage(node);
+      }
+    };
+    updateInset(m_insetBorder, showInset, chalk && inset ? m_chalkBorder.get() : nullptr, changed);
+    updateInset(
+        m_captureInsetBorder, captureInset, captureChalk ? m_captureChalkBorder.get() : nullptr, captureChanged
+    );
   }
 
   void View::setChromeAttachment(std::unique_ptr<ViewChromeAttachment> attachment) {

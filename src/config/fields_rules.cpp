@@ -259,6 +259,13 @@ namespace umbriel {
               }
           ),
           integer("border_width", 0, 100, &W::borderWidth),
+          registry::choice("border_style", &W::borderStyle, borderStyles()),
+          registry::choice(
+              "border_placement", &W::borderPlacement,
+              {{"outside", BorderPlacement::Outside}, {"inset", BorderPlacement::Inset}}
+          ),
+          boolean("border_in_capture", &W::borderInCapture),
+          registry::table("border_chalk", &W::borderChalk, chalkFields()),
           integer("outer_border_width", 0, 100, &W::outerBorderWidth),
           integer("corner_radius", 0, 100, &W::cornerRadius),
           boolean("shadow", &W::shadow),

@@ -2538,6 +2538,8 @@ namespace umbriel {
       // `focused` in the workspaces payload is the active workspace of the cursor's output, so crossing heads changes
       // it even when no workspace activates: a switch to a workspace already active elsewhere only warps the cursor.
       m_server->scheduleIpcWorkspacesEvent();
+      // With no keyboard focus the pointer decides which output counts as focused for the native screen border.
+      m_server->refreshScreenBorders();
       wlr_seat* seat = m_server->seat()->wlr();
       if (allowFocusChange
           && config().input.focus.followsMouse
