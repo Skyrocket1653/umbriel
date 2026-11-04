@@ -181,7 +181,7 @@ Available sections are `top_left`, `top_right`, `bottom_left`, and `bottom_right
 
 Named effect `set` and `cycle` arguments are checked against preset/pool kind when configuration loads, including submap bindings and disabled hot corners. Invalid references reject the binding or clear the corner action with a source diagnostic. Only the final retained action is checked after replacements. Keybinds and enabled corners prepare all reached pool members and border overlays before a trigger; disabled corners contribute no compilation roots. See [Effect actions](actions.md) and [Effects](effects.md#runtime-selection).
 
-Hot corners are inactive while the output's focused window is fullscreen. This check follows the output containing the corner, including when keyboard focus remains on another monitor. A fullscreen window on a different output or an inactive workspace does not block the corner. Neither does a retained fullscreen window after another window on that output takes focus.
+Outside the interactive overview, hot corners are inactive while the output's focused window is fullscreen. Fullscreen windows do not block corners while the overview is open; suppression resumes as soon as it starts closing. This check follows the output containing the corner, including when keyboard focus remains on another monitor. A fullscreen window on a different output or an inactive workspace does not block the corner. Neither does a retained fullscreen window after another window on that output takes focus.
 
 Hot corners are also inactive while an exclusive-keyboard layer surface, such as a launcher, is mapped. While the overview is open, exclusive-keyboard layers do not block hot corners.
 
