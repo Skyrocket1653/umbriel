@@ -148,12 +148,17 @@ radius = 3
 #
 # [effects]
 # border = "pulse"
-# Draw the border on every decorated, non-urgent, non-fullscreen window, not
-# just the focused one (overview cards included).
-# border_unfocused = true
 # For a screen effect only while an output is shared (a portal screen share or a
 # screenshot), include /usr/share/umbriel/effects/screen/vignette/effect.toml and
 # set screen_cast = "vignette" in [effects]; add in_capture = true for viewers to see it.
+# To apply scanlines only to fullscreen windows, include
+# /usr/share/umbriel/effects/window/scanlines/effect.toml above, then add:
+# [[window_rule]]
+# match.is_fullscreen = true
+# window_effect = "scanlines"
+# Draw the border on every decorated, calm, non-fullscreen window, not just
+# the focused one (overview cards included).
+# border_unfocused = true
 
 # ==============================================================================
 # Input
