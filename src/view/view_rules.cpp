@@ -696,6 +696,9 @@ namespace umbriel {
       updateBorderGeometry();
       applyCornerRadius();
       updateShadow();
+    } else {
+      const wlr_box content = committedContentBox();
+      syncNativeBorder(content.width, content.height);
     }
     if (paddingChanged) {
       // Overview cards lay their rings out from the padding too.

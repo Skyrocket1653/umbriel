@@ -363,7 +363,75 @@ namespace umbriel {
   void View::updateBorderGeometry(int contentWidth, int contentHeight) {
     syncSsdFrame();
     m_decoration.updateBorderGeometry(contentWidth, contentHeight, titleBarHeight());
+    syncNativeBorder(contentWidth, contentHeight);
     layoutChromeAttachment(contentWidth, contentHeight);
+  }
+
+  void View::syncNativeBorder(int contentWidth, int contentHeight) {
+    const auto& rule = resolvedRules();
+    auto* outer = m_decoration.borderNode();
+    if (!rule.borderStyle && !rule.borderPlacement && m_insetBorder == nullptr && !m_chalkBorder) return;
+    const auto style = rule.borderStyle.value_or(BorderStyle::Solid);
+    const bool inset = rule.borderPlacement.value_or(BorderPlacement::Outside) == BorderPlacement::Inset;
+    const int width = std::min(rule.borderWidth.value_or(config().appearance.borderWidth),
+                               (std::min(contentWidth, contentHeight) - 1) / 2);
+    const bool showInset = m_mapped && inset && style != BorderStyle::Off && width > 0;
+    if (showInset && m_insetBorder == nullptr && m_contentTree != nullptr) {
+      const float color[4]{};
+      m_insetBorder = wlr_scene_border_create(m_contentTree, color, color);
+    }
+    if (outer != nullptr) {
+      wlr_scene_node_set_enabled(&outer->node, !inset && style != BorderStyle::Off);
+    }
+    const bool chalk = m_mapped && style == BorderStyle::Chalk
+        && (inset ? showInset && m_insetBorder != nullptr : outer != nullptr && decorated());
+    bool changed = false;
+    if (chalk || m_chalkBorder) {
+      if (!m_chalkBorder) {
+        m_chalkBorder = std::make_unique<ChalkBorder>(wl_display_get_event_loop(m_server->display()), [this] {
+          auto* out = currentOutput();
+          if (!m_mapped || m_server->sessionLocked() || out == nullptr) return false;
+          const wlr_box box = out->layoutBox();
+          auto* outer = m_decoration.borderNode();
+          for (auto* node : {outer, m_insetBorder}) {
+            if (node != nullptr && node->draw_pattern != nullptr && wlr_scene_node_visible_in_box(&node->node, &box)) {
+              wlr_scene_border_damage(node);
+              return true;
+            }
+          }
+          return false;
+        });
+      }
+      auto settings = config().appearance.border.chalk;
+      settings.overlay(rule.borderChalk);
+      changed = m_chalkBorder->configure(std::move(settings), chalk);
+      m_chalkBorder->setOpacity(effectiveOpacity());
+    }
+    if (outer != nullptr) {
+      wlr_scene_border_set_pattern(outer, chalk && !inset ? ChalkBorder::draw : nullptr,
+                                   chalk && !inset ? m_chalkBorder.get() : nullptr);
+      if (changed && chalk && !inset) wlr_scene_border_damage(outer);
+    }
+    if (m_insetBorder == nullptr) return;
+    wlr_scene_node_set_enabled(&m_insetBorder->node, showInset);
+    wlr_scene_border_set_pattern(m_insetBorder, chalk && inset ? ChalkBorder::draw : nullptr,
+                                 chalk && inset ? m_chalkBorder.get() : nullptr);
+    if (!showInset) return;
+
+    const int radius = std::clamp(surfaceRadius(), 0, std::min(contentWidth, contentHeight) / 2);
+    const int innerRadius = std::max(0, radius - width);
+    const auto corners = corner_radii_all(radius);
+    wlr_scene_border_set_geometry(
+        m_insetBorder, contentWidth, contentHeight, width, 0,
+        {.area = {width, width, contentWidth - 2 * width, contentHeight - 2 * width},
+         .corners = corner_radii_all(innerRadius)}, corners, corners
+    );
+    wlr_scene_node_raise_to_top(&m_insetBorder->node);
+    const auto& colors = m_decoration.borderColors();
+    float color[4];
+    premultiplied(color, m_borderFocusedState ? colors.focused : colors.unfocused, effectiveOpacity());
+    wlr_scene_border_set_colors(m_insetBorder, color, color);
+    if (changed) wlr_scene_border_damage(m_insetBorder);
   }
 
   void View::setChromeAttachment(std::unique_ptr<ViewChromeAttachment> attachment) {

@@ -1,6 +1,7 @@
 #pragma once
 #include "config/config.h"
 #include "core/animation.h"
+#include "scene/chalk_border.h"
 #include "scene/node.h"
 #include "view/chrome_attachment.h"
 #include "view/decoration.h"
@@ -948,6 +949,10 @@ namespace umbriel {
     // must never sample the composited desktop behind translucent content.
     wlr_scene* m_captureScene = nullptr;
     ViewDecoration m_decoration;
+    std::unique_ptr<ChalkBorder> m_chalkBorder;
+    wlr_scene_border* m_insetBorder = nullptr;
+    void syncNativeBorder(int contentWidth, int contentHeight);
+
     std::unique_ptr<ViewChromeAttachment> m_chromeAttachment;
     std::unique_ptr<SsdFrame> m_ssdFrame;
     std::optional<bool> m_xdgDecorationPreference;

@@ -709,6 +709,8 @@ namespace umbriel {
     const bool hadRuntimeEffects = m_effects.slot(EffectKind::Border).runtimeSelector.has_value()
         || m_effects.slot(EffectKind::Window).runtimeSelector.has_value();
     m_mapped = false;
+    if (m_chalkBorder) m_chalkBorder->configure({}, false);
+    if (m_insetBorder != nullptr) wlr_scene_node_set_enabled(&m_insetBorder->node, false);
     m_xwaylandPointerResume.reset();
     m_floatedByStackingLayout = false;
     if (m_workspace != nullptr) {

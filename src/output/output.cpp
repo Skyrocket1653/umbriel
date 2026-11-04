@@ -20,6 +20,7 @@
 #include "output/sdr_format.h"
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
+#include "scene/color.h"
 #include "scene/config_banner.h"
 #include "scene/node.h"
 #include "scene/quit_confirm.h"
@@ -254,7 +255,39 @@ namespace umbriel {
     return m_effectAudio != m_server->effects().audio() && wlr_scene_output_audio_active(m_sceneOutput);
   }
 
+  void Output::applyScreenBorder() {
+    const auto& appearance = config().appearance;
+    const auto& settings = appearance.screen.innerBorder;
+    if (settings.whenCasting.style == BorderStyle::Off && settings.whenNotCasting.style == BorderStyle::Off
+        && m_sceneOutput->inner_border_width == 0) return;
+    const auto& state = m_server->outputCaptured(m_output) ? settings.whenCasting : settings.whenNotCasting;
+    const bool visible = m_output->enabled && !m_server->sessionLocked() && state.style != BorderStyle::Off;
+    const bool chalk = visible && state.style == BorderStyle::Chalk && state.width > 0;
+    bool changed = false;
+    if (chalk || m_chalkBorder) {
+      if (!m_chalkBorder) {
+        m_chalkBorder = std::make_unique<ChalkBorder>(wl_display_get_event_loop(m_server->display()), [this] {
+          if (!m_output->enabled || m_server->sessionLocked()) return false;
+          wlr_scene_output_damage_inner_border(m_sceneOutput);
+          return true;
+        });
+      }
+      auto pattern = appearance.border.chalk;
+      pattern.overlay(state.chalk);
+      if (!m_server->outputFocused(*this)) pattern.overlay(state.unfocusedChalk);
+      changed = m_chalkBorder->configure(std::move(pattern), chalk);
+    }
+    float color[4];
+    premultiplied(color, state.color, 1.0F);
+    wlr_scene_output_set_inner_border(
+        m_sceneOutput, chalk ? ChalkBorder::draw : nullptr, chalk ? m_chalkBorder.get() : nullptr,
+        visible ? state.width : 0, settings.inCapture, color
+    );
+    if (changed) wlr_scene_output_damage_inner_border(m_sceneOutput);
+  }
+
   void Output::applyOutputEffects() {
+    applyScreenBorder();
     EffectRegistry& registry = m_server->effects();
     const Effects& settings = config().effects;
     // Nothing configured: touch nothing (no addon, no scene calls). The registry's counts are zero too; a bound
@@ -324,7 +357,9 @@ namespace umbriel {
 
   bool Output::effectCapturePending(int captureLocks) const {
     // Keyed on configuration, not instances: a close snapshot keeps its window slots after its instances leave.
-    return captureLocks > 0 && !config().effects.inCapture && m_server->effects().inPlaceReferenced();
+    const bool nativeDisplayOnly = m_sceneOutput->inner_border_width > 0 && !m_sceneOutput->inner_border_in_capture;
+    return captureLocks > 0
+        && (nativeDisplayOnly || (!config().effects.inCapture && m_server->effects().inPlaceReferenced()));
   }
 
   bool Output::captureExclusionPending(int captureLocks) const {

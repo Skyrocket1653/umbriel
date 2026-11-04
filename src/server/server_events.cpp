@@ -1531,8 +1531,8 @@ namespace umbriel {
     resolveOutputEffect(*target);
     if (target->screenEffectSlot().effectiveName() != before) {
       kLog.debug("{} screen effect '{}' -> '{}'", output->name, before, target->screenEffectSlot().effectiveName());
-      target->applyOutputEffects();
     }
+    target->applyOutputEffects();
   }
 
   void Server::refreshScreenCastEffects() {
@@ -1547,6 +1547,11 @@ namespace umbriel {
     }
     for (wlr_output* output : captured) {
       refreshScreenCastEffect(output);
+    }
+    for (const auto& output : m_outputs) {
+      if (std::ranges::find(captured, output->wlr()) == captured.end()) {
+        output->applyScreenBorder();
+      }
     }
   }
 

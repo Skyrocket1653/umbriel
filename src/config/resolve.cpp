@@ -403,6 +403,9 @@ namespace umbriel {
       if (rule.borderColorOuter) {
         resolved.borderColorOuter = rule.borderColorOuter;
       }
+      if (rule.borderStyle) resolved.borderStyle = rule.borderStyle;
+      if (rule.borderPlacement) resolved.borderPlacement = rule.borderPlacement;
+      resolved.borderChalk.overlay(rule.borderChalk);
       if (rule.borderWidth) {
         resolved.borderWidth = rule.borderWidth;
       }
