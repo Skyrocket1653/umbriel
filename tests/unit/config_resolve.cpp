@@ -1427,6 +1427,39 @@ UMBRIEL_TEST(securityContextRulesGrantGlobalsByMetadata) {
   CHECK_EQ(umbriel::securityContextRuleGlobals(config, "org.flatpak", "org.example.Bar").size(), size_t{2});
 }
 
+UMBRIEL_TEST(xwaylandCompatibilityRulesResolveIndependently) {
+  Config config;
+  const auto resolve = [&](bool xwayland, bool fullscreen) {
+    return umbriel::resolveWindowRules(
+        config, "game", "menu", std::nullopt, ContentType::None, {.xwayland = xwayland, .fullscreen = fullscreen}, 0
+    );
+  };
+  CHECK(!resolve(true, false).xwaylandPreserveFocus.value_or(false));
+  CHECK(!resolve(true, false).xwaylandRestorePointer.value_or(false));
+  WindowRule base;
+  base.matchXwayland = true;
+  base.xwaylandPreserveFocus = true;
+  base.xwaylandRestorePointer = false;
+  config.windowRules.push_back(base);
+  CHECK(resolve(true, false).xwaylandPreserveFocus.value_or(false));
+  CHECK(!resolve(false, false).xwaylandPreserveFocus.has_value());
+  WindowRule fullscreen;
+  fullscreen.matchXwayland = true;
+  fullscreen.matchFullscreen = true;
+  fullscreen.xwaylandRestorePointer = true;
+  config.windowRules.push_back(fullscreen);
+  CHECK(resolve(true, true).xwaylandPreserveFocus.value_or(false));
+  CHECK(resolve(true, true).xwaylandRestorePointer.value_or(false));
+  CHECK(!resolve(true, false).xwaylandRestorePointer.value_or(true));
+  WindowRule disabled;
+  disabled.matchXwayland = true;
+  disabled.xwaylandPreserveFocus = false;
+  config.windowRules.push_back(disabled);
+  CHECK(!resolve(true, true).xwaylandPreserveFocus.value_or(true));
+  CHECK(resolve(true, true).xwaylandRestorePointer.value_or(false));
+  CHECK(!resolve(false, true).xwaylandRestorePointer.has_value());
+}
+
 UMBRIEL_TEST(pointerConfinementLastMatchingRuleWins) {
   Config config;
   const auto resolve = [&](bool focused) {
