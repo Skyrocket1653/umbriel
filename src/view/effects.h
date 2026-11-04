@@ -3,6 +3,8 @@
 #include "config/effects.h"
 #include "scene/effect_selection.h"
 
+#include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -66,6 +68,8 @@ namespace umbriel {
     void untrack(const void* owner); // remove from the ledger and forget it; null is a no-op
     void
     applyWindowSlots(const ApplyInput& input, const EffectPreset* border, float borderSeconds, bool borderAdvancing);
+    // Shared by live and overview nodes and reset on unmap.
+    std::optional<std::array<float, 4>> m_borderSeed;
     EffectSlot m_borderSlot;
     EffectSlot m_windowSlot;
     std::string m_border;

@@ -1,6 +1,7 @@
 #include "view/effects.h"
 
 #include "config/config.h"
+#include "core/animation.h"
 #include "scene/effect_registry.h"
 
 #include <algorithm>
@@ -23,6 +24,7 @@ namespace umbriel {
   }
 
   void ViewEffects::resetSlots() {
+    m_borderSeed.reset();
     m_borderSlot = {};
     m_windowSlot = {};
     m_border.clear();
@@ -73,7 +75,11 @@ namespace umbriel {
       }
       untrack(input.border);
     } else {
+      if (!m_borderSeed) {
+        m_borderSeed = beginAnimationTransition().seed;
+      }
       fx_animation_parameters parameters{};
+      std::ranges::copy(*m_borderSeed, parameters.random_seed);
       parameters.scale = input.scale;
       registry.fillTimeUniforms(parameters, seconds, *preset, shader);
       if (preset->light) {

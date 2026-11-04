@@ -37,28 +37,29 @@ Locking the session or switching away from its active VT revokes outstanding lea
 
 ## Settings
 
-| Key                                        | Type                              | Default      | Description                                                                                          |
-| ------------------------------------------ | --------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------- |
-| `enabled`                                  | bool                              | `true`       | Turn the monitor on or off.                                                                          |
-| `focus_at_startup`                         | bool                              | `false`      | Move the mouse cursor to this monitor on startup.                                                    |
-| `mode`                                     | string                            | preferred    | Resolution and optional refresh rate, such as `"2560x1440@165"`.                                     |
-| `position`                                 | `[x, y]`                          | automatic    | Top-left position in logical coordinates.                                                            |
-| `scale`                                    | float                             | `1.0`        | Output scale from 0.25 to 4.0.                                                                       |
-| `transform`                                | string                            | `"normal"`   | Rotation or reflection.                                                                              |
-| `vrr`                                      | string                            | `"disabled"` | Variable refresh rate policy.                                                                        |
-| `tearing`                                  | bool                              | `false`      | Allow eligible fullscreen windows to use asynchronous page flips.                                    |
-| `direct_scanout`                           | bool                              | `true`       | Allow eligible fullscreen buffers to bypass composition.                                             |
-| `hdr`                                      | string                            | `"off"`      | HDR activation policy.                                                                               |
-| `sdr_white`                                | float                             | `203`        | SDR reference white in cd/m² while HDR is active.                                                    |
-| `sdr_transfer`                             | string                            | `"gamma22"`  | Transfer curve for untagged SDR on HDR outputs: `"gamma22"` or `"srgb"`.                             |
-| `bit_depth`                                | int                               | `8`          | Render bit depth for SDR output: `8` or `10`.                                                        |
-| `workspaces`                               | int, string array, or `"dynamic"` | `"dynamic"`  | Workspace inventory for this output.                                                                 |
-| `min_workspaces`                           | int                               | `1`          | Minimum count for a dynamic output.                                                                  |
-| `cyclic_workspaces`                        | bool                              | `false`      | Wrap a workspace step around the ends of the inventory.                                              |
-| `workspace_axis`                           | string                            | `"vertical"` | Workspace arrangement axis.                                                                          |
-| `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output, 0.1 to 4.0.                                          |
-| `screen_effect`                            | string                            | inherited    | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output.      |
-| `screen_cast_effect`                       | string                            | inherited    | Replace `effects.screen_cast` with a screen preset or pool, or `"off"` to disable it on this output. |
+| Key                                        | Type                              | Default      | Description                                                                                                                                      |
+| ------------------------------------------ | --------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled`                                  | bool                              | `true`       | Turn the monitor on or off.                                                                                                                      |
+| `focus_at_startup`                         | bool                              | `false`      | Move the mouse cursor to this monitor on startup.                                                                                                |
+| `mode`                                     | string                            | preferred    | Resolution and optional refresh rate, such as `"2560x1440@165"`.                                                                                 |
+| `position`                                 | `[x, y]`                          | automatic    | Top-left position in logical coordinates.                                                                                                        |
+| `scale`                                    | float                             | `1.0`        | Output scale from 0.25 to 4.0.                                                                                                                   |
+| `transform`                                | string                            | `"normal"`   | Rotation or reflection.                                                                                                                          |
+| `vrr`                                      | string                            | `"disabled"` | Variable refresh rate policy.                                                                                                                    |
+| `tearing`                                  | bool                              | `false`      | Allow eligible fullscreen windows to use asynchronous page flips.                                                                                |
+| `direct_scanout`                           | bool                              | `true`       | Allow eligible fullscreen buffers to bypass composition.                                                                                         |
+| `hdr`                                      | string                            | `"off"`      | HDR activation policy.                                                                                                                           |
+| `sdr_white`                                | float                             | `203`        | SDR reference white in cd/m² while HDR is active.                                                                                                |
+| `sdr_transfer`                             | string                            | `"gamma22"`  | Transfer curve for untagged SDR on HDR outputs: `"gamma22"` or `"srgb"`.                                                                         |
+| `bit_depth`                                | int                               | `8`          | Render bit depth for SDR output: `8` or `10`.                                                                                                    |
+| `workspaces`                               | int, string array, or `"dynamic"` | `"dynamic"`  | Workspace inventory for this output.                                                                                                             |
+| `min_workspaces`                           | int                               | `1`          | Minimum count for a dynamic output.                                                                                                              |
+| `cyclic_workspaces`                        | bool                              | `false`      | Wrap a workspace step around the ends of the inventory.                                                                                          |
+| `workspace_axis`                           | string                            | `"vertical"` | Workspace arrangement axis.                                                                                                                      |
+| `layout.scrolling.default_extent_fraction` | float                             | inherited    | Initial scrolling-column extent on this output, 0.1 to 4.0.                                                                                      |
+| `screen_effect`                            | string                            | inherited    | Replace `effects.screen` with a screen preset or pool, or `"off"` to disable it on this output.                                                  |
+| `screen_cast_effect`                       | string                            | inherited    | Replace `effects.screen_cast` with a screen preset or pool, or `"off"` to disable it on this output.                                             |
+| `screen_cast_unfocused_effect`             | string                            | inherited    | Replace `effects.screen_cast_unfocused` with a screen preset or pool, or `"off"` to show no cast effect here while it is not the focused output. |
 
 Umbriel tries an unadvertised resolution as a custom mode. If it cannot apply the configured mode, it uses the preferred advertised mode and logs a warning. Backend tests include the 8-bit SDR fallback, so a rejected swapchain can reach the preferred mode. On that mode, Umbriel retries the configured HDR and bit-depth preferences. A temporary rendering failure after an accepted backend test retries the current candidate instead of changing modes.
 
@@ -121,6 +122,8 @@ screen_effect = "off"
 [output."DP-1"]
 screen_cast_effect = "wisps"
 ```
+
+`screen_cast_unfocused_effect` does the same for `effects.screen_cast_unfocused`, the cast effect used while this output is not the focused one (keyboard focus, or the pointer's output while nothing has focus). `screen_cast_effect = "off"` opts the output out of both.
 
 ### Position and scale
 

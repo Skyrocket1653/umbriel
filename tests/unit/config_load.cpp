@@ -2048,6 +2048,24 @@ UMBRIEL_TEST(maximizedToEdgesMatcherLoadsStrictBoolean) {
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_maximized_to_edges"));
 }
 
+UMBRIEL_TEST(fullscreenMatcherLoadsStrictBoolean) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = true\nwindow_effect = \"off\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchFullscreen == true);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = false\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchFullscreen == false);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_fullscreen"));
+}
+
 UMBRIEL_TEST(windowXdgTagMatcherLoadsRegexAndRejectsInvalidValues) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -4026,6 +4044,41 @@ UMBRIEL_TEST(screenCastSelectorsLoad) {
   ));
 }
 
+// The unfocused cast selector is read like screen_cast: presets and pools of kind screen, per-output override, "off",
+// and a selector of the wrong kind is dropped.
+UMBRIEL_TEST(screenCastUnfocusedSelectorsLoad) {
+  const TempConfigTree tree;
+  tree.write("s.glsl", "vec4 screen(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write("b.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
+  tree.write(
+      "config.toml",
+      "[effects]\nscreen_cast = \"wisps\"\nscreen_cast_unfocused = \"dim\"\n"
+      "[effects.preset.wisps]\nkind = \"screen\"\nshader = \"s.glsl\"\n"
+      "[effects.preset.dim]\nkind = \"screen\"\nshader = \"s.glsl\"\n"
+      "[effects.preset.ring]\nkind = \"border\"\nshader = \"b.glsl\"\n"
+      "[output.\"HEADLESS-1\"]\nscreen_cast_unfocused_effect = \"wisps\"\n"
+      "[output.\"HEADLESS-2\"]\nscreen_cast_unfocused_effect = \"off\"\n"
+      "[output.\"HEADLESS-3\"]\nscreen_cast_unfocused_effect = \"ring\"\n"
+  );
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK_EQ(config.effects.screenCast, std::string("wisps"));
+  CHECK_EQ(config.effects.screenCastUnfocused, std::string("dim"));
+  CHECK_EQ(config.outputs.size(), size_t{3});
+  if (config.outputs.size() != 3) {
+    return;
+  }
+  CHECK(config.outputs[0].screenCastUnfocusedEffect == "wisps");
+  CHECK(config.outputs[1].screenCastUnfocusedEffect == "off");
+  CHECK(!config.outputs[2].screenCastUnfocusedEffect);
+  CHECK(containsDiagnostic(
+      store,
+      "ignoring output.HEADLESS-3.screen_cast_unfocused_effect (effect 'ring' is a border preset, not a screen preset)"
+  ));
+}
+
 UMBRIEL_TEST(effectReferencesAreValidatedAfterEverySectionIsRead) {
   const TempConfigTree tree;
   tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
@@ -5172,6 +5225,21 @@ UMBRIEL_TEST(wideScrollingExtentsLoadUpToTheWideCeiling) {
   file.write("[[window_rule]]\nmatch.app_id = \"^wide$\"\ndefault_scrolling_extent = 1.5\n");
   CHECK(store.reload().success);
   CHECK(store.config().windowRules[0].defaultScrollingExtent.value_or(0.0) == 1.5);
+}
+
+UMBRIEL_TEST(xwaylandFocusRuleAndMatcherParse) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.is_xwayland = true\nxwayland_preserve_focus = true\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchXwayland.value_or(false));
+  CHECK(store.config().windowRules[0].xwaylandPreserveFocus.value_or(false));
+  file.write("[[window_rule]]\nmatch.is_xwayland = false\nxwayland_preserve_focus = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].matchXwayland.value_or(true));
+  CHECK(!store.config().windowRules[0].xwaylandPreserveFocus.value_or(true));
 }
 
 int main() { return RUN_TESTS(); }

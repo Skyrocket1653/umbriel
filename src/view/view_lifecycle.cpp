@@ -709,6 +709,7 @@ namespace umbriel {
     const bool hadRuntimeEffects = m_effects.slot(EffectKind::Border).runtimeSelector.has_value()
         || m_effects.slot(EffectKind::Window).runtimeSelector.has_value();
     m_mapped = false;
+    m_xwaylandPointerResume.reset();
     m_floatedByStackingLayout = false;
     if (m_workspace != nullptr) {
       m_workspace->syncFloatingStack(this);

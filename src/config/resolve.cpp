@@ -255,10 +255,16 @@ namespace umbriel {
       if (rule.matchContentType && *rule.matchContentType != contentType) {
         continue;
       }
+      if (rule.matchXwayland && *rule.matchXwayland != state.xwayland) {
+        continue;
+      }
       if (rule.matchFocused && *rule.matchFocused != state.focused) {
         continue;
       }
       if (rule.matchFloating && *rule.matchFloating != state.floating) {
+        continue;
+      }
+      if (rule.matchFullscreen && *rule.matchFullscreen != state.fullscreen) {
         continue;
       }
       if (rule.matchMaximizedToEdges && *rule.matchMaximizedToEdges != state.maximizedToEdges) {
@@ -345,6 +351,9 @@ namespace umbriel {
       }
       if (rule.blockCapture) {
         resolved.blockCapture = rule.blockCapture;
+      }
+      if (rule.xwaylandPreserveFocus) {
+        resolved.xwaylandPreserveFocus = rule.xwaylandPreserveFocus;
       }
       if (rule.backgroundRender) {
         resolved.backgroundRender = rule.backgroundRender;

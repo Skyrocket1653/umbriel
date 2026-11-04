@@ -1796,10 +1796,9 @@ namespace umbriel {
       wlr_scene_node_set_enabled(&m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)->node, false);
     }
 
-    m_server->clearKeyboardFocus();
+    // Overview owns keyboard input, but the selected window retains activation, focus rules and chrome.
+    m_server->clearClientInputPreservingActivation();
     activateLiveTarget();
-    m_server->cursor()->clearPointerFocus();
-    m_server->cursor()->clearConstraint();
 
     applyProgress();
     wlr_scene_node_set_enabled(&m_server->overviewBlurTree()->node, true);

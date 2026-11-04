@@ -104,9 +104,13 @@ namespace umbriel {
     std::string screen;
     // Replaces `screen` on an output while a client captures it whole. "" = none.
     std::string screenCast;
+    // Replaces `screenCast` on a captured output that is not the focused one. "" = use `screenCast`.
+    std::string screenCastUnfocused;
     std::string cursor;
     int maxFps = 0; // 0-240, 0 follows the refresh rate
     bool inCapture = false;
+    // Draw border effects on unfocused windows too: one ring capture and one
+    // program pass per window per frame, so the widening is opt-in.
     bool borderUnfocused = false;
     bool operator==(const Effects&) const = default;
   };

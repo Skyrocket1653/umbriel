@@ -8,6 +8,8 @@
 #include "wlr.h"
 
 #include <algorithm>
+#include <optional>
+#include <tuple>
 #include <cassert>
 
 namespace umbriel {
@@ -94,12 +96,33 @@ namespace umbriel {
     const bool overridden = rule != nullptr && rule->screenEffect.has_value();
     slot.configuredSelector = overridden ? *rule->screenEffect : config().effects.screen;
     slot.configuredSource = overridden ? EffectSelectorSource::Rule : EffectSelectorSource::Default;
-    const bool castOverridden = rule != nullptr && rule->screenCastEffect.has_value();
-    const std::string& cast = castOverridden ? *rule->screenCastEffect : config().effects.screenCast;
     // Swapped in the selector, not at bind time, so a pool keeps its pick per selector and IPC shows what runs.
-    if (!cast.empty() && cast != kEffectOff && outputCaptured(output.wlr())) {
-      slot.configuredSelector = cast;
-      slot.configuredSource = castOverridden ? EffectSelectorSource::Rule : EffectSelectorSource::Default;
+    // `screen_cast_effect = "off"` opts the output out of every cast effect, focused or not.
+    const bool castOptOut = rule != nullptr && rule->screenCastEffect && *rule->screenCastEffect == kEffectOff;
+    if (!castOptOut && outputCaptured(output.wlr())) {
+      // An output rule's value wins over the global one.
+      const auto select = [&](const std::optional<std::string> OutputRule::* member, const std::string& global) {
+        const bool fromRule = rule != nullptr && (rule->*member).has_value();
+        return std::tuple(
+            fromRule ? *(rule->*member) : global, fromRule ? EffectSelectorSource::Rule : EffectSelectorSource::Default
+        );
+      };
+      auto [cast, source] = select(&OutputRule::screenCastEffect, config().effects.screenCast);
+      // An unfocused output prefers the unfocused cast selector; "off" there shows no cast effect, empty inherits.
+      bool suppressed = false;
+      if (!outputFocused(output)) {
+        const auto [quiet, quietSource] =
+            select(&OutputRule::screenCastUnfocusedEffect, config().effects.screenCastUnfocused);
+        if (!quiet.empty()) {
+          suppressed = quiet == kEffectOff;
+          cast = quiet;
+          source = quietSource;
+        }
+      }
+      if (!suppressed && !cast.empty() && cast != kEffectOff) {
+        slot.configuredSelector = cast;
+        slot.configuredSource = source;
+      }
     }
     resolveEffectSlot(slot, EffectKind::Screen);
   }

@@ -1005,6 +1005,10 @@ namespace umbriel {
     }
     showConfigDiagnostics();
     markDirty(Dirty::Cheatsheet);
+    if (m_xwayland != nullptr) {
+      // Re-evaluate retained X focus after a rule was disabled or removed.
+      m_xwayland->scheduleFocusClear();
+    }
     if (m_configWatcher != nullptr) {
       m_configWatcher->watch(configWatchPaths());
     }
@@ -1528,6 +1532,21 @@ namespace umbriel {
     if (target->screenEffectSlot().effectiveName() != before) {
       kLog.debug("{} screen effect '{}' -> '{}'", output->name, before, target->screenEffectSlot().effectiveName());
       target->applyOutputEffects();
+    }
+  }
+
+  void Server::refreshScreenCastEffects() {
+    std::vector<wlr_output*> captured;
+    for (const auto& watch : m_imageCopySessions) {
+      if (watch->session == nullptr || watch->output == nullptr) {
+        continue;
+      }
+      if (std::ranges::find(captured, watch->output) == captured.end()) {
+        captured.push_back(watch->output);
+      }
+    }
+    for (wlr_output* output : captured) {
+      refreshScreenCastEffect(output);
     }
   }
 
@@ -2340,6 +2359,8 @@ namespace umbriel {
     Server* self;
     self = wl_container_of(listener, self, m_layerKeyboardFocusChange);
     self->scheduleIpcLayersEvent();
+    // The cast effect differs between the focused output and the others.
+    self->refreshScreenCastEffects();
   }
 
   void Server::addPointer(wlr_input_device* device) {
@@ -3619,6 +3640,18 @@ namespace umbriel {
         && surface != nullptr
         && wlr_xwayland_surface_try_from_wlr_surface(surface) == nullptr;
 
+    // Layer-shell and other direct seat handoffs do not all pass through FocusManager::focusView.
+    // Respect a grab that may reject this enter; an accepted transfer must first release the old game's input.
+    if (previous != nullptr && surface != nullptr
+        && wlr_surface_get_root_surface(previous) != wlr_surface_get_root_surface(surface)
+        && (grab == KeyboardGrab::Bypass || !wlr_seat_keyboard_has_grab(seat))) {
+      if (View* view = View::fromSurface(wlr_surface_get_root_surface(previous));
+          view != nullptr && view->preservesXwaylandFocus()) {
+        clearClientInputPreservingActivation();
+        m_cursor->releaseRuleConfinement(*view);
+      }
+    }
+
     if (config().input.keyboard.trackLayout == TrackLayout::Window) {
       if (const auto state = keyboardLayoutState();
           state.has_value() && state->currentIndex < state->names.size() && !state->names.empty()) {
@@ -3708,6 +3741,16 @@ namespace umbriel {
       }
     }
     wlr_seat_keyboard_notify_clear_focus(seat);
+  }
+
+  void Server::clearClientInputPreservingActivation() {
+    // Keep this order shared with overview: keyboard leave, pointer leave, then constraint deactivation.
+    // In particular, do not apply a locked-pointer cursor hint after entering the incoming client.
+    m_cursor->rememberLockedXwaylandPointer();
+    clearKeyboardFocus(false);
+    m_cursor->clearPointerFocus();
+    m_cursor->clearConstraint();
+    wlr_seat_pointer_notify_frame(m_seat->wlr());
   }
 
   void Server::rememberKeyboardInputSource(Keyboard& keyboard) {

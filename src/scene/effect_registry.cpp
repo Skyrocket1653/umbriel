@@ -169,6 +169,7 @@ vec4 animation(vec2 uv) {
     add(settings.effects.window);
     add(settings.effects.screen);
     add(settings.effects.screenCast);
+    add(settings.effects.screenCastUnfocused);
     add(settings.effects.cursor);
     for (const WindowRule& rule : settings.windowRules) {
       add(rule.borderEffect.value_or(""));
@@ -177,6 +178,7 @@ vec4 animation(vec2 uv) {
     for (const OutputRule& rule : settings.outputs) {
       add(rule.screenEffect.value_or(""));
       add(rule.screenCastEffect.value_or(""));
+      add(rule.screenCastUnfocusedEffect.value_or(""));
     }
     for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; ++slot) {
       const auto binding = settings.animation.eventEffect(static_cast<AnimationEvent>(slot));

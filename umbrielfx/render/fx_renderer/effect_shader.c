@@ -86,6 +86,7 @@ static const char kAnimationSuffix[] = "\nvoid main() { gl_FragColor = animation
 // Hole and radii describe the client rectangle inside the drawn rectangle. The
 // distance is signed logical pixels, negative inside the window.
 static const char kBorderSection[] =
+    "uniform vec4 umbriel_random_seed;\n"
     "uniform vec4 umbriel_border_hole;\n"
     "uniform vec4 umbriel_border_radius;\n"
     "float umbriel_border_distance(vec2 uv) {\n"

@@ -196,6 +196,8 @@ namespace umbriel {
     bool hasCopyCaptureFor(const wlr_output* output) const;
     // True while a live image-copy session reads `output` as a whole.
     bool outputCaptured(const wlr_output* output) const;
+    // Re-resolve the cast effect of every captured output: the focused one and the others pick different selectors.
+    void refreshScreenCastEffects();
     wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
     ColorManager* colorManager() const { return m_colorManager.get(); }
     const wlr_image_description_v1_data* surfaceImageDescription(wlr_surface* surface) const;
@@ -374,6 +376,8 @@ namespace umbriel {
     enum class KeyboardGrab : uint8_t { Respect, Bypass };
     void notifyKeyboardEnter(wlr_surface* surface, KeyboardGrab grab = KeyboardGrab::Respect);
     void notifyKeyboardClearFocus();
+    // Release real client input without changing window activation, as overview does.
+    void clearClientInputPreservingActivation();
     // Drop every keyboard's consumed-press bookkeeping, for transitions that
     // eat the matching releases.
     void forgetConsumedKeycodes();
@@ -495,7 +499,7 @@ namespace umbriel {
     void refocusExplicit(Output* preferred) { m_focus.refocusExplicit(preferred); }
     void refreshLayerFocus(Output* output) { m_focus.refreshLayerFocus(output); }
     void reconcileDynamicWorkspaces();
-    void clearKeyboardFocus() { m_focus.clearKeyboardFocus(); }
+    void clearKeyboardFocus(bool deactivate = true) { m_focus.clearKeyboardFocus(deactivate); }
     void deactivateViews(View* except = nullptr) { m_focus.deactivateViews(except); }
     LayerSurface* exclusiveKeyboardLayer() const { return m_focus.exclusiveKeyboardLayer(); }
     // Lets a caller other than View's own close animation drive the snapshot with its own duration/curve/style.
@@ -652,6 +656,9 @@ namespace umbriel {
     // The output holding keyboard focus, or nullptr when focus is not on any
     // output (no surface, or an unmapped workspace).
     Output* focusedOutput() const;
+    // The output that counts as focused for the cast effect: the one holding keyboard focus, or the pointer's output
+    // while nothing has focus, so a lone output is always focused.
+    bool outputFocused(const Output& output) const;
     void updateSeatCapabilities();
     void beginSessionLock(wlr_session_lock_v1* lock);
     void recreateRenderer();
