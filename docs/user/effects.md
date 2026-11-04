@@ -204,6 +204,21 @@ Sources are GLSL ES 1.00 fragment code without `#version`, `main`, or precision 
 | screen    | `vec4 screen(vec2 uv)`    |
 | cursor    | `vec4 cursor(vec2 uv)`    |
 
+Window and screen shaders can opt in to history arguments by adding
+`#define UMBRIEL_EFFECT_HISTORY_PARAMETERS` in their source and using
+`vec4 window(vec2 uv, float previousTime, vec4 previousValue)` or
+`vec4 screen(vec2 uv, float previousTime, vec4 previousValue)`.
+`previousTime` is the previous result's effect clock in seconds. The shader
+can convert it to an update tick using its own interval. Without matching
+history, Umbriel passes `-1.0` and transparent black. A history texture can
+also contain transparent pixels where the previous damage region did not draw.
+
+The previous pixel is premultiplied RGBA and already includes any compositing
+against the previous frame's input. For overlays, reuse it only where the
+overlay fully replaced that input. Window effects should also require
+`umbriel_mask(uv) == 1.0` when returning a previously masked result.
+The OLED examples under `examples/effects/oled` show both entry points.
+
 Every kind sees:
 
 | Name                               | Meaning                                                                                                                                                                                                                                                                          |

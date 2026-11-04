@@ -121,9 +121,26 @@ static const char kMaskSection[] =
     "  float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;\n"
     "  return 1.0 - smoothstep(-0.5, 0.5, d * umbriel_scale);\n"
     "}\n";
+// Opt in from the effect source so legacy one-argument entry points still compile.
 static const char kWindowSuffix[] =
-    "\nvoid main() { gl_FragColor = mix(umbriel_sample(v_texcoord), window(v_texcoord), umbriel_mask(v_texcoord)); }\n";
-static const char kScreenSuffix[] = "\nvoid main() { gl_FragColor = screen(v_texcoord); }\n";
+    "\nvoid main() {\n"
+    "#ifdef UMBRIEL_EFFECT_HISTORY_PARAMETERS\n"
+    "  vec4 previous = umbriel_previous_time >= 0.0 ? umbriel_sample_previous(v_texcoord) : vec4(0.0);\n"
+    "  vec4 color = window(v_texcoord, umbriel_previous_time, previous);\n"
+    "#else\n"
+    "  vec4 color = window(v_texcoord);\n"
+    "#endif\n"
+    "  gl_FragColor = mix(umbriel_sample(v_texcoord), color, umbriel_mask(v_texcoord));\n"
+    "}\n";
+static const char kScreenSuffix[] =
+    "\nvoid main() {\n"
+    "#ifdef UMBRIEL_EFFECT_HISTORY_PARAMETERS\n"
+    "  vec4 previous = umbriel_previous_time >= 0.0 ? umbriel_sample_previous(v_texcoord) : vec4(0.0);\n"
+    "  gl_FragColor = screen(v_texcoord, umbriel_previous_time, previous);\n"
+    "#else\n"
+    "  gl_FragColor = screen(v_texcoord);\n"
+    "#endif\n"
+    "}\n";
 // The cursor kind is in place too, so it needs the mask helper before its own uniform.
 static const char kCursorSection[] = "uniform vec2 umbriel_pointer;\n"
                                      "uniform int umbriel_pointer_count;\n"
