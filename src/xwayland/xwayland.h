@@ -3,6 +3,7 @@
 #include "xwayland/outputs.h"
 #include "xwayland/xsettings.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -57,6 +58,8 @@ namespace umbriel {
     const XwaylandOutputs& outputs() const { return *m_outputs; }
     // X pixels per layout unit in `surface`: the scale its X11 window is drawn at. 1 for every other surface.
     double surfaceScale(wlr_surface* surface) const;
+    // Sample the live cursor position in the client's X11 coordinate space before a focus handoff.
+    std::optional<std::array<double, 2>> pointerPosition(wlr_xwayland_surface* surface) const;
     // Bounding shape in X surface-local coordinates. NULL means unshaped; an empty region cuts all pixels away.
     // A new surface remains empty until its initial asynchronous query completes.
     const pixman_region32_t* surfaceShape(wlr_surface* surface) const;
@@ -77,6 +80,10 @@ namespace umbriel {
     // An Xwayland surface just yielded the keyboard to a native Wayland client. Clear both X focus channels after the
     // Wayland enter has reached the client, so the native client holds keyboard focus before X11 loses it.
     void scheduleFocusClear();
+    void clearFocus(bool force = false);
+    // Retained game geometry can overlap an unrelated input target in X coordinates. Keep those games below the
+    // actual pointer target without changing their focus or coordinates. Button delivery waits for the X request.
+    void preparePointerTarget(wlr_surface* surface, bool waitForServer = false);
 
   private:
     static void onServerStart(wl_listener* listener, void* data);
@@ -90,7 +97,6 @@ namespace umbriel {
     void handleReady();
     void handleNewSurface(wlr_xwayland_surface* xsurface);
     void handleKeyboardFocusChange(void* data);
-    void clearFocus();
     // Owns the XSETTINGS selection of the running Xwayland and publishes the current settings in it.
     void startXsettings(uint32_t selectionAtom, uint32_t managerAtom);
     // Rewrites the settings property when the values announced to X11 clients changed.

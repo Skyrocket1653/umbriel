@@ -5411,4 +5411,35 @@ dim_behind = 0.0
   CHECK(containsDiagnostic(store, "dim_behind"));
 }
 
+UMBRIEL_TEST(xwaylandFocusRuleAndMatcherParse) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[[window_rule]]\nmatch.is_xwayland = true\nxwayland_preserve_focus = true\nxwayland_restore_pointer = true\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchXwayland == true);
+  CHECK(store.config().windowRules[0].xwaylandPreserveFocus == true);
+  CHECK(store.config().windowRules[0].xwaylandRestorePointer == true);
+  file.write(
+      "[[window_rule]]\nmatch.is_xwayland = false\nxwayland_preserve_focus = false\nxwayland_restore_pointer = false\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules[0].matchXwayland == false);
+  CHECK(store.config().windowRules[0].xwaylandPreserveFocus == false);
+  CHECK(store.config().windowRules[0].xwaylandRestorePointer == false);
+  file.write("[[window_rule]]\nmatch.is_xwayland = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  file.write("[[window_rule]]\nxwayland_preserve_focus = \"yes\"\nxwayland_restore_pointer = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].xwaylandPreserveFocus.has_value());
+  CHECK(!store.config().windowRules[0].xwaylandRestorePointer.has_value());
+  CHECK(containsDiagnostic(store, "xwayland_preserve_focus"));
+  CHECK(containsDiagnostic(store, "xwayland_restore_pointer"));
+}
+
 int main() { return RUN_TESTS(); }

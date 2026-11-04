@@ -3,6 +3,8 @@
 
 #include <array>
 #include <cerrno>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -38,7 +40,110 @@ namespace {
     std::string commands;
     bool running = true;
     std::string inputModel = "passive";
+    bool warpLoop = false;
+    int16_t warpX = 0;
+    int16_t warpY = 0;
+    bool cameraReleaseOnFocusOut = false;
+    bool cameraRelockPending = false;
+    uint64_t cameraMoves = 0;
+    uint64_t cameraSamples = 0;
+    std::chrono::steady_clock::time_point nextCameraTick{};
   };
+
+  void handleEvent(State& state, const xcb_generic_event_t& event);
+
+  // Model a native X11 game which polls the cursor and recenters it every frame, even while X activation is retained.
+  void tickCamera(State& state) {
+    if (!state.warpLoop || std::chrono::steady_clock::now() < state.nextCameraTick) {
+      return;
+    }
+    state.nextCameraTick = std::chrono::steady_clock::now() + std::chrono::milliseconds(16);
+    auto* reply =
+        xcb_query_pointer_reply(state.connection, xcb_query_pointer(state.connection, state.windows[0]), nullptr);
+    if (reply == nullptr) {
+      state.running = false;
+      return;
+    }
+    ++state.cameraSamples;
+    if (reply->win_x != state.warpX || reply->win_y != state.warpY) {
+      ++state.cameraMoves;
+    }
+    std::free(reply);
+    xcb_warp_pointer(state.connection, XCB_NONE, state.windows[0], 0, 0, 0, 0, state.warpX, state.warpY);
+    xcb_flush(state.connection);
+  }
+
+  void startCamera(State& state) {
+    auto* geometry =
+        xcb_get_geometry_reply(state.connection, xcb_get_geometry(state.connection, state.windows[0]), nullptr);
+    if (geometry == nullptr) {
+      state.running = false;
+      return;
+    }
+    state.warpX = static_cast<int16_t>(geometry->width / 2);
+    state.warpY = static_cast<int16_t>(geometry->height / 2);
+    std::free(geometry);
+    if (state.cameraRelockPending) {
+      auto* pointer =
+          xcb_query_pointer_reply(state.connection, xcb_query_pointer(state.connection, state.windows[0]), nullptr);
+      if (pointer == nullptr) {
+        state.running = false;
+        return;
+      }
+      if (pointer->win_x != state.warpX || pointer->win_y != state.warpY) {
+        ++state.cameraMoves;
+      }
+      std::println(
+          "camera-relock-baseline x={} y={} expected_x={} expected_y={}", pointer->win_x, pointer->win_y, state.warpX,
+          state.warpY
+      );
+      std::free(pointer);
+      state.cameraRelockPending = false;
+    }
+    const xcb_pixmap_t bitmap = xcb_generate_id(state.connection);
+    const xcb_gcontext_t gc = xcb_generate_id(state.connection);
+    const xcb_cursor_t cursor = xcb_generate_id(state.connection);
+    xcb_create_pixmap(state.connection, 1, bitmap, state.windows[0], 1, 1);
+    const uint32_t zero = 0;
+    xcb_create_gc(state.connection, gc, bitmap, XCB_GC_FOREGROUND, &zero);
+    const xcb_rectangle_t pixel{.x = 0, .y = 0, .width = 1, .height = 1};
+    xcb_poly_fill_rectangle(state.connection, bitmap, gc, 1, &pixel);
+    xcb_create_cursor(state.connection, cursor, bitmap, bitmap, 0, 0, 0, 0, 0, 0, 0, 0);
+    xcb_change_window_attributes(state.connection, state.windows[0], XCB_CW_CURSOR, &cursor);
+    xcb_free_cursor(state.connection, cursor);
+    xcb_free_gc(state.connection, gc);
+    xcb_free_pixmap(state.connection, bitmap);
+    const auto grab = xcb_grab_pointer(
+        state.connection, false, state.windows[0], XCB_EVENT_MASK_POINTER_MOTION, XCB_GRAB_MODE_ASYNC,
+        XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_CURRENT_TIME
+    );
+    auto* reply = xcb_grab_pointer_reply(state.connection, grab, nullptr);
+    const bool grabbed = reply != nullptr && reply->status == XCB_GRAB_STATUS_SUCCESS;
+    std::free(reply);
+    if (!grabbed) {
+      std::println(stderr, "camera pointer grab failed");
+      state.running = false;
+      return;
+    }
+    xcb_warp_pointer(state.connection, XCB_NONE, state.windows[0], 0, 0, 0, 0, state.warpX, state.warpY);
+    xcb_flush(state.connection);
+    // Drain events generated before capture starts. Later MotionNotify events are part of the camera input stream,
+    // including short re-entry movements that can disappear before the next polling sample.
+    auto* settled =
+        xcb_query_pointer_reply(state.connection, xcb_query_pointer(state.connection, state.windows[0]), nullptr);
+    if (settled == nullptr) {
+      state.running = false;
+      return;
+    }
+    std::free(settled);
+    while (auto* event = xcb_poll_for_event(state.connection)) {
+      handleEvent(state, *event);
+      std::free(event);
+    }
+    state.warpLoop = true;
+    state.nextCameraTick = std::chrono::steady_clock::now() + std::chrono::milliseconds(16);
+    std::println("camera-started");
+  }
 
   xcb_atom_t internAtom(xcb_connection_t* connection, std::string_view name) {
     const xcb_intern_atom_cookie_t cookie =
@@ -150,8 +255,42 @@ namespace {
 
   void handleCommand(State& state, std::string_view command) {
     constexpr std::string_view prefix = "state ";
-    if (command.starts_with(prefix) && command.size() > prefix.size()) {
+    if (command == "camera start") {
+      startCamera(state);
+    } else if (command == "camera release-on-focus-out true" || command == "camera release-on-focus-out false") {
+      state.cameraReleaseOnFocusOut = command == "camera release-on-focus-out true";
+      std::println("camera-focus-lifecycle={}", state.cameraReleaseOnFocusOut);
+    } else if (command == "camera stop") {
+      state.warpLoop = false;
+      xcb_ungrab_pointer(state.connection, XCB_CURRENT_TIME);
+      const uint32_t cursor = XCB_NONE;
+      xcb_change_window_attributes(state.connection, state.windows[0], XCB_CW_CURSOR, &cursor);
+      xcb_flush(state.connection);
+      std::println("camera-stopped");
+    } else if (command.starts_with("camera state ")) {
+      auto* geometry =
+          xcb_get_geometry_reply(state.connection, xcb_get_geometry(state.connection, state.windows[0]), nullptr);
+      if (geometry == nullptr) {
+        state.running = false;
+        return;
+      }
+      std::println(
+          "camera label={} x={} y={} moves={} samples={}", command.substr(13), geometry->x, geometry->y,
+          state.cameraMoves, state.cameraSamples
+      );
+      std::free(geometry);
+    } else if (command.starts_with(prefix) && command.size() > prefix.size()) {
       reportState(state, command.substr(prefix.size()));
+    } else if (command.starts_with("pointer-target ")) {
+      // Core focus and the root child under the X pointer are independent. A retained fullscreen game's frozen X
+      // geometry can cover a different client's real Wayland input surface after overview restacks the scene.
+      auto* reply =
+          xcb_query_pointer_reply(state.connection, xcb_query_pointer(state.connection, state.screen->root), nullptr);
+      std::println(
+          "pointer-target label={} window={}", command.substr(15),
+          reply != nullptr ? windowName(state, reply->child) : "unavailable"
+      );
+      std::free(reply);
     } else if (command == "geometry") {
       // The window's root position and size as the X server holds them, which is what the client was configured to.
       const xcb_get_geometry_cookie_t geometryCookie = xcb_get_geometry(state.connection, state.windows[0]);
@@ -166,6 +305,19 @@ namespace {
       }
       std::free(geometry);
       std::free(root);
+    } else if (command == "configure same") {
+      auto* geometry =
+          xcb_get_geometry_reply(state.connection, xcb_get_geometry(state.connection, state.windows[0]), nullptr);
+      if (geometry == nullptr) {
+        state.running = false;
+        return;
+      }
+      const uint32_t size[]{geometry->width, geometry->height};
+      std::free(geometry);
+      xcb_configure_window(
+          state.connection, state.windows[0], XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, size
+      );
+      xcb_flush(state.connection);
     } else if (command == "fullscreen true") {
       requestFullscreen(state, true);
     } else if (command == "fullscreen false") {
@@ -219,9 +371,47 @@ namespace {
 
   void handleEvent(State& state, const xcb_generic_event_t& event) {
     const uint8_t type = event.response_type & static_cast<uint8_t>(~0x80U);
+    if (type == XCB_ENTER_NOTIFY || type == XCB_LEAVE_NOTIFY) {
+      const auto& crossing = reinterpret_cast<const xcb_enter_notify_event_t&>(event);
+      std::println(
+          "pointer {} window={}", type == XCB_ENTER_NOTIFY ? "enter" : "leave", windowName(state, crossing.event)
+      );
+      return;
+    }
+    if (type == XCB_MOTION_NOTIFY) {
+      const auto& motion = reinterpret_cast<const xcb_motion_notify_event_t&>(event);
+      if (state.warpLoop
+          && motion.event == state.windows[0]
+          && (motion.event_x != state.warpX || motion.event_y != state.warpY)) {
+        // A transient re-entry motion can rotate a real game even if the next query/recenter sample misses it.
+        ++state.cameraMoves;
+      }
+      std::println(
+          "pointer motion window={} x={} y={}", windowName(state, motion.event), motion.event_x, motion.event_y
+      );
+      return;
+    }
+    if (type == XCB_CONFIGURE_NOTIFY) {
+      std::println("configure-notify");
+      return;
+    }
     if (type == XCB_FOCUS_IN || type == XCB_FOCUS_OUT) {
       const auto& focus = reinterpret_cast<const xcb_focus_in_event_t&>(event);
       std::println("focus {} window={}", type == XCB_FOCUS_IN ? "in" : "out", windowName(state, focus.event));
+      if (type == XCB_FOCUS_OUT
+          && focus.event == state.windows[0]
+          && state.cameraReleaseOnFocusOut
+          && state.warpLoop
+          && focus.mode != XCB_NOTIFY_MODE_GRAB
+          && focus.mode != XCB_NOTIFY_MODE_UNGRAB) {
+        // Real games commonly tear down capture on X11 focus loss and recreate it asynchronously after FocusIn.
+        // The harness sends camera start separately, so the compositor must survive the interval without a lock.
+        state.warpLoop = false;
+        state.cameraRelockPending = true;
+        xcb_ungrab_pointer(state.connection, XCB_CURRENT_TIME);
+        xcb_flush(state.connection);
+        std::println("camera-focus-released");
+      }
       return;
     }
     if (type == XCB_KEY_PRESS || type == XCB_KEY_RELEASE) {
@@ -252,6 +442,9 @@ namespace {
     const xcb_window_t window = xcb_generate_id(state.connection);
     state.windows[index] = window;
     constexpr uint32_t eventMask = XCB_EVENT_MASK_STRUCTURE_NOTIFY
+        | XCB_EVENT_MASK_ENTER_WINDOW
+        | XCB_EVENT_MASK_LEAVE_WINDOW
+        | XCB_EVENT_MASK_POINTER_MOTION
         | XCB_EVENT_MASK_FOCUS_CHANGE
         | XCB_EVENT_MASK_KEY_PRESS
         | XCB_EVENT_MASK_KEY_RELEASE
@@ -338,7 +531,7 @@ int main(int argc, char** argv) {
         {.fd = xcbFd, .events = POLLIN, .revents = 0},
     }};
     auto ready = descriptors;
-    const int result = poll(ready.data(), ready.size(), -1);
+    const int result = poll(ready.data(), ready.size(), state.warpLoop ? 16 : -1);
     if (result < 0) {
       if (errno == EINTR) {
         continue;
@@ -355,6 +548,7 @@ int main(int argc, char** argv) {
         std::free(event);
       }
     }
+    tickCamera(state);
   }
 
   for (xcb_window_t window : state.windows) {

@@ -864,6 +864,15 @@ namespace umbriel {
     if (raise) {
       raiseToTop();
     }
+    if (withKeyboard
+        && seat->keyboard_state.focused_surface != surface
+        && restoresXwaylandPointer()
+        && m_xwaylandPointerResume.has_value()) {
+      if (seat->drag == nullptr && wlr_seat_keyboard_has_grab(seat)) {
+        wlr_seat_keyboard_end_grab(seat);
+      }
+      m_server->cursor()->prepareXwaylandPointerRestore(*this);
+    }
     if (!scheduledActivated()) {
       setActivatedState(true);
     } else {
@@ -892,6 +901,7 @@ namespace umbriel {
       wlr_seat_keyboard_end_grab(seat);
     }
     m_server->notifyKeyboardEnter(surface);
+    m_server->cursor()->finishXwaylandPointerRestore(*this);
   }
 
   void View::scheduleFrame() {

@@ -30,6 +30,7 @@ extern "C" {
 #include "server/focus.h"
 #include "server/server.h"
 #include "view/view.h"
+#include "xwayland/xwayland.h"
 // clang-format off
 #include <algorithm>
 #include <cmath>
@@ -1782,6 +1783,10 @@ namespace umbriel {
       kLog.debug("overview open ignored during active client drag");
       return false;
     }
+    // Capture before resetMode, workspace settling, or card construction can alter the game's pointer coordinates.
+    View* inputFocus = seatFocusedWindow(*m_server);
+    const auto previousPointerResume = inputFocus != nullptr ? inputFocus->m_xwaylandPointerResume : std::nullopt;
+    m_server->cursor()->rememberLockedXwaylandPointer();
     m_server->cursor()->resetMode();
     // An in-flight three-finger switch settles on the filmstrip instead of the hidden desktop slide.
     const Gestures::SwitchPick switchPick = m_server->gestures()->pickSwitchForOverview();
@@ -1804,6 +1809,10 @@ namespace umbriel {
 
     buildState();
     if (m_outputs.empty()) {
+      if (inputFocus != nullptr) {
+        inputFocus->m_xwaylandPointerResume = previousPointerResume;
+        inputFocus->syncXwaylandConfigure();
+      }
       return false;
     }
     m_server->cursor()->resetWheelAccumulation();
@@ -2104,6 +2113,16 @@ namespace umbriel {
       m_server->focusView(focus, FocusReason::PointerPress);
     } else {
       m_server->refocus();
+    }
+    // Reconcile X11 focus after restoring actual seat ownership. Captured-game previews deferred activation until
+    // their pointer baseline was primed; a native target uses the normal deferred clear after its keyboard enter.
+    if (Xwayland* xwayland = m_server->xwayland()) {
+      wlr_surface* surface = m_server->seat()->wlr()->keyboard_state.focused_surface;
+      if (surface == nullptr) {
+        xwayland->clearFocus();
+      } else if (wlr_xwayland_surface_try_from_wlr_surface(surface) == nullptr) {
+        xwayland->scheduleFocusClear();
+      }
     }
     // Focus chrome changed while the windows were hidden (the live target moved during the overview, focus returned
     // during the close or just now), so they reappear with the settled result.

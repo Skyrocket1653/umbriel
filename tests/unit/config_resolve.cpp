@@ -1517,6 +1517,7 @@ UMBRIEL_TEST(fullscreenMatcherSelectsEffectsAndRestoresDefaults) {
   };
   CHECK(resolve({}).windowEffect == "normal");
   CHECK(resolve({.fullscreen = true}).windowEffect == "fullscreen");
+  CHECK(resolve({.xwayland = true, .fullscreen = true}).windowEffect == "fullscreen");
   CHECK(resolve({.maximizedToEdges = true}).windowEffect == "normal");
   CHECK(resolve({}).windowEffect == "normal");
   WindowRule windowed;
@@ -1529,6 +1530,49 @@ UMBRIEL_TEST(fullscreenMatcherSelectsEffectsAndRestoresDefaults) {
   changed.matchFullscreen = false;
   CHECK(!(changed == fullscreen));
   CHECK((umbriel::WindowRuleState{} != umbriel::WindowRuleState{.fullscreen = true}));
+}
+
+UMBRIEL_TEST(xwaylandCompatibilityRulesAreIndependentAndLastRuleWins) {
+  Config config;
+  const auto resolve = [&](bool isXwayland) {
+    return umbriel::resolveWindowRules(
+        config, "game", "game", std::nullopt, ContentType::None, {.xwayland = isXwayland}, 0
+    );
+  };
+  CHECK(!resolve(true).xwaylandPreserveFocus.has_value());
+  CHECK(!resolve(true).xwaylandRestorePointer.has_value());
+  WindowRule x;
+  x.matchXwayland = true;
+  x.xwaylandPreserveFocus = true;
+  config.windowRules.push_back(x);
+  CHECK(resolve(true).xwaylandPreserveFocus == true);
+  CHECK(!resolve(true).xwaylandRestorePointer.has_value());
+  CHECK(!resolve(false).xwaylandPreserveFocus.has_value());
+  WindowRule native;
+  native.matchXwayland = false;
+  native.opacity = 0.5;
+  config.windowRules.push_back(native);
+  CHECK(resolve(false).opacity.has_value());
+  CHECK(!resolve(true).opacity.has_value());
+  WindowRule overrideRule;
+  overrideRule.matchXwayland = true;
+  overrideRule.xwaylandPreserveFocus = false;
+  overrideRule.xwaylandRestorePointer = true;
+  config.windowRules.push_back(overrideRule);
+  CHECK(resolve(true).xwaylandPreserveFocus == false);
+  CHECK(resolve(true).xwaylandRestorePointer == true);
+  CHECK(!resolve(false).xwaylandRestorePointer.has_value());
+  auto changed = overrideRule;
+  changed.xwaylandRestorePointer = false;
+  CHECK(changed != overrideRule);
+  config.windowRules.push_back(changed);
+  CHECK(resolve(true).xwaylandRestorePointer == false);
+  changed = x;
+  changed.xwaylandPreserveFocus = false;
+  CHECK(changed != x);
+  changed = x;
+  changed.matchXwayland = false;
+  CHECK(changed != x);
 }
 
 int main() { return RUN_TESTS(); }

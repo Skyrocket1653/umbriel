@@ -232,6 +232,11 @@ namespace umbriel {
     void cancelLayoutInteraction();
     void handleNewConstraint(wlr_pointer_constraint_v1* constraint);
     void clearConstraint();
+    void rememberLockedXwaylandPointer();
+    // Prime the saved pointer coordinates before X11 activation, then re-enable capture after keyboard entry.
+    void prepareXwaylandPointerRestore(View& view);
+    void finishXwaylandPointerRestore(View& view);
+    bool pointerInputAllowed(wlr_surface* surface) const;
     // Recompute compositor cursor (mod-held resize/move affordance, or active grab).
     void refreshInteractiveCursor();
     // Re-resolve what lies under a stationary cursor on `output` once its content has settled, so the client under it
@@ -418,6 +423,8 @@ namespace umbriel {
     int handleDataDragEdgeScrollTimer();
     void setActiveConstraint(wlr_pointer_constraint_v1* constraint);
     void updateConstraintForSurface(wlr_surface* surface);
+    bool syncRestoredXwaylandPointer(const Output* output = nullptr);
+    void cancelUnclaimedXwaylandPointerRestore();
     bool constraintSurfaceActive() const;
     void warpToConstraintHint(wlr_pointer_constraint_v1* constraint);
     bool confineDelta(double* dx, double* dy) const;

@@ -259,6 +259,9 @@ namespace umbriel {
           && (!state.layout || std::ranges::find(rule.matchLayouts, *state.layout) == rule.matchLayouts.end())) {
         continue;
       }
+      if (rule.matchXwayland && *rule.matchXwayland != state.xwayland) {
+        continue;
+      }
       if (rule.matchFocused && *rule.matchFocused != state.focused) {
         continue;
       }
@@ -355,6 +358,12 @@ namespace umbriel {
       }
       if (rule.blockCapture) {
         resolved.blockCapture = rule.blockCapture;
+      }
+      if (rule.xwaylandPreserveFocus) {
+        resolved.xwaylandPreserveFocus = rule.xwaylandPreserveFocus;
+      }
+      if (rule.xwaylandRestorePointer) {
+        resolved.xwaylandRestorePointer = rule.xwaylandRestorePointer;
       }
       if (rule.backgroundRender) {
         resolved.backgroundRender = rule.backgroundRender;
