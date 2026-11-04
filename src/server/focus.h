@@ -72,8 +72,8 @@ namespace umbriel {
     // Drop activation, focus ring, and foreign-activated on every mapped view
     // except `except`.
     void deactivateViews(View* except = nullptr);
-    // deactivateViews plus a keyboard clear: nothing focused, pointer untouched.
-    void clearKeyboardFocus();
+    // Clear seat input; overview can retain activation and focus rules while owning the keyboard.
+    void clearKeyboardFocus(bool deactivate = true);
     // Keyboard *and* pointer clear, for a session lock taking the seat away
     // entirely.
     void clearNormalFocus();

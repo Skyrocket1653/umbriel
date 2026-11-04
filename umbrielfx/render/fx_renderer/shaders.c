@@ -236,6 +236,18 @@ bool link_border_program(struct border_shader* shader) {
   shader->outer_width = glGetUniformLocation(prog, "outer_width");
   shader->inner_color = glGetUniformLocation(prog, "inner_color");
 
+  shader->chalk_enabled = glGetUniformLocation(prog, "chalk_enabled");
+  shader->chalk_masks = glGetUniformLocation(prog, "chalk_masks");
+  shader->chalk_palette = glGetUniformLocation(prog, "chalk_palette");
+  shader->chalk_mask_size = glGetUniformLocation(prog, "chalk_mask_size");
+  shader->chalk_style = glGetUniformLocation(prog, "chalk_style");
+  shader->chalk_offsets = glGetUniformLocation(prog, "chalk_offsets");
+  shader->chalk_palette_size = glGetUniformLocation(prog, "chalk_palette_size");
+  shader->chalk_current = glGetUniformLocation(prog, "chalk_current");
+  shader->chalk_previous = glGetUniformLocation(prog, "chalk_previous");
+  shader->chalk_blend = glGetUniformLocation(prog, "chalk_blend");
+  shader->chalk_decode = glGetUniformLocation(prog, "chalk_decode");
+
   return true;
 }
 

@@ -18,6 +18,7 @@
 #include "lock/session_lock.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "scene/chalk_border.h"
 #include "scene/cheatsheet.h"
 #include "scene/effect_registry.h"
 #include "scene/hint_rect.h"
@@ -774,6 +775,9 @@ namespace umbriel {
     if (!effects.any()) {
       return;
     }
+    if (effects.viewChrome) {
+      prepareChalkMasks(m_renderer, config());
+    }
     // Settle every interaction whose meaning depends on the workspace axis or the
     // layout objects about to be replaced, while those still exist.
     if (effects.workspaceLayout || effects.workspaceInventory || effects.outputState) {
@@ -1207,6 +1211,7 @@ namespace umbriel {
       stop();
       return;
     }
+    prepareChalkMasks(newRenderer, config());
     wlr_allocator* newAllocator = createAllocator(m_backend, newRenderer);
     if (newAllocator == nullptr) {
       kLog.error("could not recreate allocator after GPU reset, terminating");
@@ -1562,7 +1567,13 @@ namespace umbriel {
     resolveOutputEffect(*target);
     if (target->screenEffectSlot().effectiveName() != before) {
       kLog.debug("{} screen effect '{}' -> '{}'", output->name, before, target->screenEffectSlot().effectiveName());
-      target->applyOutputEffects();
+    }
+    target->applyOutputEffects();
+  }
+
+  void Server::refreshScreenBorders() {
+    for (const auto& output : m_outputs) {
+      output->applyScreenBorder();
     }
   }
 
@@ -2345,6 +2356,8 @@ namespace umbriel {
     Server* self;
     self = wl_container_of(listener, self, m_layerKeyboardFocusChange);
     self->scheduleIpcLayersEvent();
+    // Native screen borders can use different palettes on unfocused outputs.
+    self->refreshScreenBorders();
   }
 
   void Server::addPointer(wlr_input_device* device) {
@@ -3717,6 +3730,15 @@ namespace umbriel {
       }
     }
     wlr_seat_keyboard_notify_clear_focus(seat);
+  }
+
+  void Server::clearClientInputPreservingActivation() {
+    // Keep this order shared with overview: keyboard leave, pointer leave, then constraint deactivation.
+    // In particular, do not apply a locked-pointer cursor hint after entering the incoming client.
+    clearKeyboardFocus(false);
+    m_cursor->clearPointerFocus();
+    m_cursor->clearConstraint();
+    wlr_seat_pointer_notify_frame(m_seat->wlr());
   }
 
   void Server::rememberKeyboardInputSource(Keyboard& keyboard) {

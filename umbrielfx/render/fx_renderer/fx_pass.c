@@ -7,6 +7,7 @@
 #include "render/fx_renderer/shaders.h"
 #include "render/pass.h"
 #include "render/tracy.h"
+#include "umbrielfx/render/chalk.h"
 #include "umbrielfx/render/fx_renderer/fx_offscreen_buffers.h"
 #include "umbrielfx/render/fx_renderer/fx_renderer.h"
 #include "umbrielfx/types/fx/blur_data.h"
@@ -2422,7 +2423,10 @@ void fx_render_pass_add_rounded_rect(
   TRACY_BOTH_ZONES_END;
 }
 
-void fx_render_pass_add_border(struct fx_gles_render_pass* pass, const struct fx_render_border_options* options) {
+static void render_border(
+    struct fx_gles_render_pass* pass, const struct fx_render_border_options* options,
+    const struct fx_chalk_pattern* chalk
+) {
   struct fx_renderer* renderer = pass->buffer->renderer;
   const struct wlr_render_color inner_color = pass_color(pass, &options->inner_color);
   const struct wlr_render_color outer_color = pass_color(pass, &options->outer_color);
@@ -2454,10 +2458,69 @@ void fx_render_pass_add_border(struct fx_gles_render_pass* pass, const struct fx
   glUniform1f(shader.inner_width, options->inner_width);
   glUniform1f(shader.outer_width, options->outer_width);
 
+  glUniform1i(shader.chalk_enabled, chalk != NULL);
+  if (chalk != NULL) {
+    const struct fx_texture* palette = fx_get_texture(chalk->palette);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, renderer->chalk_masks);
+    glUniform1i(shader.chalk_masks, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, palette->tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glUniform1i(shader.chalk_palette, 1);
+    glUniform2f(shader.chalk_mask_size, FX_CHALK_MASK_WIDTH, renderer->chalk_mask_rows);
+    glUniform4f(shader.chalk_style, chalk->cell_px, chalk->always_flip_spacing, chalk->palette_repeats, chalk->opacity);
+    glUniform2f(shader.chalk_offsets, chalk->mask_offset, chalk->palette_offset);
+    glUniform1f(shader.chalk_palette_size, chalk->palette->width);
+    glUniform4f(
+        shader.chalk_current, chalk->current.row, chalk->current.inverted, chalk->current.palette_shift,
+        chalk->current.palette_boundary
+    );
+    glUniform4f(
+        shader.chalk_previous, chalk->previous.row, chalk->previous.inverted, chalk->previous.palette_shift,
+        chalk->previous.palette_boundary
+    );
+    glUniform3f(shader.chalk_blend, chalk->blend, chalk->current.alternate, chalk->previous.alternate);
+    glUniform1i(
+        shader.chalk_decode,
+        !pass->has_color_transform                                ? 0
+            : pass->sdr_tf == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22 ? 2
+                                                                  : 1
+    );
+  }
+
   render(&options->box, &clip_region, shader.pos_attrib);
+  if (chalk != NULL) {
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+  }
   pixman_region32_fini(&clip_region);
   pop_fx_debug(renderer);
   TRACY_BOTH_ZONES_END;
+}
+
+void fx_render_pass_add_border(struct fx_gles_render_pass* pass, const struct fx_render_border_options* options) {
+  render_border(pass, options, NULL);
+}
+
+bool fx_render_pass_add_chalk_border(
+    struct fx_gles_render_pass* pass, const struct fx_render_border_options* options,
+    const struct fx_chalk_pattern* chalk
+) {
+  const int rows = pass->buffer->renderer->chalk_mask_rows;
+  if (wlr_box_empty(&options->box)
+      || options->inner_width + options->outer_width <= 0
+      || chalk->current.row >= rows
+      || chalk->previous.row >= rows
+      || chalk->palette == NULL
+      || !wlr_texture_is_fx(chalk->palette)
+      || fx_get_texture(chalk->palette)->target != GL_TEXTURE_2D) {
+    return false;
+  }
+  render_border(pass, options, chalk);
+  return true;
 }
 
 void fx_render_pass_add_rounded_rect_grad(

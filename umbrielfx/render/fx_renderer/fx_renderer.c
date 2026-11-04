@@ -10,6 +10,7 @@
 #include "render/fx_renderer/util.h"
 #include "render/pass.h"
 #include "render/tracy.h"
+#include "umbrielfx/render/chalk.h"
 #include "umbrielfx/render/fx_renderer/fx_offscreen_buffers.h"
 #include "umbrielfx/render/fx_renderer/fx_renderer.h"
 #include "umbrielfx/render/pass.h"
@@ -88,6 +89,7 @@ static inline void free_shaders(struct fx_renderer* renderer) {
   glDeleteProgram(renderer->shaders.quad_clip.program);
   glDeleteProgram(renderer->shaders.quad_round.program);
   glDeleteProgram(renderer->shaders.border.program);
+  glDeleteTextures(1, &renderer->chalk_masks);
   glDeleteProgram(renderer->shaders.quad_grad.program);
   glDeleteProgram(renderer->shaders.quad_grad_round.program);
   glDeleteProgram(renderer->shaders.tex_rgba.program);
@@ -441,6 +443,59 @@ struct wlr_renderer* fx_renderer_create_with_drm_fd_gbm(int drm_fd) {
 }
 
 struct wlr_renderer* fx_renderer_create(struct wlr_backend* backend) { return renderer_autocreate(backend, -1, false); }
+
+bool fx_renderer_prepare_chalk_masks(struct wlr_renderer* wlr_renderer, int rows) {
+  if (rows <= 0 || rows > FX_CHALK_MAX_MASK_ROWS) {
+    return false;
+  }
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  if (renderer->chalk_mask_rows == rows) {
+    return true;
+  }
+  const size_t cells = FX_CHALK_MASK_WIDTH * (size_t)rows;
+  uint8_t* pixels = malloc(cells);
+  if (pixels == NULL) {
+    return false;
+  }
+
+  // Keep existing rows identical whenever the cache is resized on config reload.
+  uint32_t random = 0x42d4ab19U;
+  for (size_t i = 0; i < cells; ++i) {
+    random ^= random << 13;
+    random ^= random >> 17;
+    random ^= random << 5;
+    pixels[i] = (random & 1U) != 0 ? 255 : 0;
+  }
+
+  struct wlr_egl_context previous = {0};
+  if (!wlr_egl_make_current(renderer->egl, &previous)) {
+    free(pixels);
+    return false;
+  }
+  GLuint masks = 0;
+  glActiveTexture(GL_TEXTURE0);
+  glGenTextures(1, &masks);
+  if (masks != 0) {
+    glBindTexture(GL_TEXTURE_2D, masks);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, FX_CHALK_MASK_WIDTH, rows, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, pixels);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    if (glGetError() != GL_NO_ERROR) {
+      glDeleteTextures(1, &masks);
+      masks = 0;
+    } else {
+      glDeleteTextures(1, &renderer->chalk_masks);
+      renderer->chalk_masks = masks;
+      renderer->chalk_mask_rows = rows;
+    }
+  }
+  wlr_egl_restore_context(&previous);
+  free(pixels);
+  return masks != 0;
+}
 
 static bool link_shaders(struct fx_renderer* renderer) {
   // quad fragment shader
