@@ -1988,6 +1988,36 @@ UMBRIEL_TEST(windowStartupMatcherLoadsBoolean) {
   CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
 }
 
+UMBRIEL_TEST(windowInsetBorderCaptureSettingsLoad) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(R"toml(
+[appearance.border]
+in_capture = true
+
+[appearance.border.chalk]
+pixel_seconds_per_update = 8.0
+segment_seconds_per_update = 12.0
+
+[[window_rule]]
+match.is_fullscreen = true
+border_in_capture = false
+border_chalk = { pixel_seconds_per_update = 4.0 }
+)toml");
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK(config.appearance.border.inCapture);
+  const auto resolved = umbriel::resolveWindowRules(
+      config, "video", std::nullopt, std::nullopt, ContentType::None, {.fullscreen = true}, 0
+  );
+  CHECK(resolved.borderInCapture == false);
+  auto chalk = config.appearance.border.chalk;
+  chalk.overlay(resolved.borderChalk);
+  CHECK(chalk.pixelSecondsPerUpdate == 4.0);
+  CHECK(chalk.segmentSecondsPerUpdate == 12.0);
+}
+
 UMBRIEL_TEST(layerMatchersLoadLayerAndStartup) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -2046,6 +2076,24 @@ UMBRIEL_TEST(maximizedToEdgesMatcherLoadsStrictBoolean) {
   CHECK(store.reload().success);
   CHECK(store.config().windowRules.empty());
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_maximized_to_edges"));
+}
+
+UMBRIEL_TEST(fullscreenMatcherLoadsStrictBoolean) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = true\nwindow_effect = \"off\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchFullscreen == true);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = false\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchFullscreen == false);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_fullscreen"));
 }
 
 UMBRIEL_TEST(windowXdgTagMatcherLoadsRegexAndRejectsInvalidValues) {
@@ -4026,6 +4074,8 @@ UMBRIEL_TEST(screenCastSelectorsLoad) {
   ));
 }
 
+// The unfocused cast selector is read like screen_cast: presets and pools of kind screen, per-output override, "off",
+// and a selector of the wrong kind is dropped.
 UMBRIEL_TEST(effectReferencesAreValidatedAfterEverySectionIsRead) {
   const TempConfigTree tree;
   tree.write("a.glsl", "vec4 border(vec2 uv) { return umbriel_sample(uv); }");
@@ -5172,6 +5222,21 @@ UMBRIEL_TEST(wideScrollingExtentsLoadUpToTheWideCeiling) {
   file.write("[[window_rule]]\nmatch.app_id = \"^wide$\"\ndefault_scrolling_extent = 1.5\n");
   CHECK(store.reload().success);
   CHECK(store.config().windowRules[0].defaultScrollingExtent.value_or(0.0) == 1.5);
+}
+
+UMBRIEL_TEST(xwaylandFocusRuleAndMatcherParse) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.is_xwayland = true\nxwayland_preserve_focus = true\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchXwayland.value_or(false));
+  CHECK(store.config().windowRules[0].xwaylandPreserveFocus.value_or(false));
+  file.write("[[window_rule]]\nmatch.is_xwayland = false\nxwayland_preserve_focus = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].matchXwayland.value_or(true));
+  CHECK(!store.config().windowRules[0].xwaylandPreserveFocus.value_or(true));
 }
 
 int main() { return RUN_TESTS(); }

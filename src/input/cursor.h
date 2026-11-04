@@ -228,6 +228,8 @@ namespace umbriel {
     void cancelLayoutInteraction();
     void handleNewConstraint(wlr_pointer_constraint_v1* constraint);
     void clearConstraint();
+    void rememberLockedXwaylandPointer();
+    bool pointerInputAllowed(wlr_surface* surface) const;
     // Recompute compositor cursor (mod-held resize/move affordance, or active grab).
     void refreshInteractiveCursor();
     // Re-resolve what lies under a stationary cursor on `output` once its content has settled, so the client under it

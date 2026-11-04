@@ -5,6 +5,7 @@
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "server/server.h"
+#include "view/view.h"
 #include "wlr.h"
 #include "xwayland/primary.h"
 #include "xwayland/shape.h"
@@ -434,10 +435,31 @@ namespace umbriel {
     wl_event_source_timer_update(m_selectionRefreshTimer, 1);
   }
 
-  void Xwayland::clearFocus() {
+  void Xwayland::clearFocus(bool force) {
     xcb_connection_t* connection = wlr_xwayland_get_xwm_connection(m_wlr);
     if (connection == nullptr) {
       return;
+    }
+    if (!force && !m_server.sessionLocked()) {
+      // Query only when an opted-in live window exists. Never retain a destroyed/unmapped owner's focus,
+      // and never let an unrelated opted-in window protect another X client's focus.
+      const auto& views = m_server.registry().all();
+      const bool eligible = std::ranges::any_of(views, [](const auto& view) {
+        return view->mapped() && view->xwayland() && view->preservesXwaylandFocus();
+      });
+      if (eligible) {
+        xcb_get_input_focus_reply_t* reply =
+            xcb_get_input_focus_reply(connection, xcb_get_input_focus(connection), nullptr);
+        const xcb_window_t focused = reply != nullptr ? reply->focus : static_cast<xcb_window_t>(XCB_WINDOW_NONE);
+        std::free(reply);
+        if (std::ranges::any_of(views, [focused](const auto& view) {
+              return view->mapped() && view->xwayland()
+                  && view->xwaylandSurface()->window_id == focused
+                  && view->preservesXwaylandFocus();
+            })) {
+          return;
+        }
+      }
     }
     constexpr xcb_window_t kNoWindow = XCB_WINDOW_NONE;
     xcb_set_input_focus(connection, XCB_INPUT_FOCUS_NONE, kNoWindow, XCB_CURRENT_TIME);

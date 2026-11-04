@@ -113,8 +113,8 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-consume-from-left`                                                                     | Pull the left column's window into the focused column       |
 | `window-consume-from-right`                                                                    | Pull the right column's window into the focused column      |
 | `window-consume-left`                                                                          | Stack the focused window into the column left               |
-| `window-consume-or-expel-left`                                                                 | Split the window out, or stack it into the column left      |
-| `window-consume-or-expel-right`                                                                | Split the window out, or stack it into the column right     |
+| `window-consume-or-expel-left`                                                                 | Split the window out, stack it left, or move past a fullscreen column |
+| `window-consume-or-expel-right`                                                                | Split the window out, stack it right, or move past a fullscreen column |
 | `window-consume-right`                                                                         | Stack the focused window into the column right              |
 | `window-cycle-primary-extent`                                                                  | Cycle the focused area's primary extent through presets     |
 | `window-cycle-primary-extent-back`                                                             | Cycle the primary extent presets in reverse                 |

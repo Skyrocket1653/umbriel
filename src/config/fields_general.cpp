@@ -16,6 +16,52 @@
 
 namespace umbriel {
 
+  const registry::Choices<BorderStyle>& borderStyles() {
+    static const registry::Choices<BorderStyle> styles{
+        {"off", BorderStyle::Off}, {"solid", BorderStyle::Solid}, {"chalk", BorderStyle::Chalk},
+    };
+    return styles;
+  }
+
+  const registry::Fields<ChalkSettings>& chalkFields() {
+    using C = ChalkSettings;
+    static const registry::Fields<C> fields{
+        registry::real("seconds_per_update", 0.01, 86400, &C::secondsPerUpdate),
+        registry::real("pixel_seconds_per_update", 0.01, 86400, &C::pixelSecondsPerUpdate),
+        registry::real("segment_seconds_per_update", 0.01, 86400, &C::segmentSecondsPerUpdate),
+        registry::real("fade_seconds", 0, 86400, &C::fadeSeconds),
+        registry::integer("fade_fps", 1, 120, &C::fadeFps),
+        registry::real("boundary_jump_fraction", 0, 0.5, &C::boundaryJumpFraction),
+        registry::real("cell_px", 1, 256, &C::cellPx),
+        registry::integer("always_flip_spacing", 0, 4096, &C::alwaysFlipSpacing),
+        registry::real("palette_repeats", 1, 1024, &C::paletteRepeats),
+        registry::boolean("randomize_initial_pattern", &C::randomizeInitialPattern),
+        registry::color("background", &C::background),
+        registry::checked<C>(
+            "foreground", registry::KeyDescription("string_array").withFormat("color"),
+            [](const toml::node& node, const std::string& path, C& target, registry::ReadContext&) {
+              const auto* entries = node.as_array();
+              std::vector<ChalkColor> colors;
+              if (entries != nullptr && !entries->empty() && entries->size() <= 64) {
+                for (const auto& entry : *entries) {
+                  const auto value = entry.value<std::string_view>();
+                  ChalkColor color{};
+                  if (!value || !parseColor(*value, color)) break;
+                  colors.push_back(color);
+                }
+                if (colors.size() == entries->size()) {
+                  target.foreground = std::move(colors);
+                  return true;
+                }
+              }
+              warnAt(node.source(), "ignoring {} (expected 1 to 64 colors)", path);
+              return false;
+            }
+        ),
+    };
+    return fields;
+  }
+
   namespace {
 
     constexpr std::array<std::string_view, 8> kReservedEnvironmentNames{
@@ -177,7 +223,28 @@ namespace umbriel {
               }
           ),
       };
+      static const registry::Fields<A::Border> border{
+          boolean("in_capture", &A::Border::inCapture),
+          registry::table("chalk", &A::Border::chalk, chalkFields()),
+      };
+      static const registry::Fields<ScreenBorderState> screenState{
+          registry::choice("style", &ScreenBorderState::style, borderStyles()),
+          integer("width", 0, 100, &ScreenBorderState::width),
+          registry::color("color", &ScreenBorderState::color),
+          registry::table("chalk", &ScreenBorderState::chalk, chalkFields()),
+          registry::table("unfocused_chalk", &ScreenBorderState::unfocusedChalk, chalkFields()),
+      };
+      static const registry::Fields<ScreenInnerBorder> screenInner{
+          boolean("in_capture", &ScreenInnerBorder::inCapture),
+          registry::table("when_casting", &ScreenInnerBorder::whenCasting, screenState),
+          registry::table("when_not_casting", &ScreenInnerBorder::whenNotCasting, screenState),
+      };
+      static const registry::Fields<A::Screen> screen{
+          registry::table("inner_border", &A::Screen::innerBorder, screenInner),
+      };
       static const registry::Fields<A> fields{
+          registry::table("border", &A::border, border),
+          registry::table("screen", &A::screen, screen),
           integer("border_width", 0, 100, &A::borderWidth),
           integer("outer_border_width", 0, 100, &A::outerBorderWidth),
           integer("corner_radius", 0, 100, &A::cornerRadius),

@@ -192,6 +192,7 @@ namespace umbriel {
     bool moveFocusedColumnFirst();
     bool moveFocusedColumnLast();
     bool consumeFocused(int direction);
+    bool consumeOrExpelFocused(int direction);
     // Pulls the window the neighboring column shows into the focused window's column, leaving focus alone.
     bool consumeFromFocused(int direction);
     bool expelFocused(int direction);

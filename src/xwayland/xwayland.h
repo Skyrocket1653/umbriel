@@ -77,6 +77,7 @@ namespace umbriel {
     // An Xwayland surface just yielded the keyboard to a native Wayland client. Clear both X focus channels after the
     // Wayland enter has reached the client, so the native client holds keyboard focus before X11 loses it.
     void scheduleFocusClear();
+    void clearFocus(bool force = false);
 
   private:
     static void onServerStart(wl_listener* listener, void* data);
@@ -90,7 +91,6 @@ namespace umbriel {
     void handleReady();
     void handleNewSurface(wlr_xwayland_surface* xsurface);
     void handleKeyboardFocusChange(void* data);
-    void clearFocus();
     // Owns the XSETTINGS selection of the running Xwayland and publishes the current settings in it.
     void startXsettings(uint32_t selectionAtom, uint32_t managerAtom);
     // Rewrites the settings property when the values announced to X11 clients changed.
