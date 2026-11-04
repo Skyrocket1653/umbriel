@@ -90,70 +90,70 @@ Changing a window stream to an output, or an output stream to a window, is suppo
 
 Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 
-| Action                                                                                         | Effect                                                      |
-| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `column-center`                                                                                | Center the focused column in the viewport                   |
-| `column-move-left`                                                                             | Move the focused column one position left                   |
-| `column-move-right`                                                                            | Move the focused column one position right                  |
-| `column-move-to-first`                                                                         | Move the focused column to the first position               |
-| `column-move-to-last`                                                                          | Move the focused column to the last position                |
-| `column-move-to-output-down`                                                                   | Move the focused column to the output below                 |
-| `column-move-to-output-left`                                                                   | Move the focused column to the output left                  |
-| `column-move-to-output-right`                                                                  | Move the focused column to the output right                 |
-| `column-move-to-output-up`                                                                     | Move the focused column to the output above                 |
-| `layout-master-count-decrease`                                                                 | Demote the last master window to the stack                  |
-| `layout-master-count-increase`                                                                 | Promote the first stack window to master                    |
-| `layout-scroll-down`                                                                           | Scroll the strip toward its end                             |
-| `layout-scroll-drag`                                                                           | Pan the strip while the bound button is held                |
-| `layout-scroll-left`                                                                           | Scroll the strip toward its start                           |
-| `layout-scroll-right`                                                                          | Scroll the strip toward its end                             |
-| `layout-scroll-up`                                                                             | Scroll the strip toward its start                           |
-| `layout-toggle-split`                                                                          | Toggle the focused tile's dwindle split direction           |
-| `window-center`                                                                                | Center the focused floating window on its output            |
-| `window-consume-from-left`                                                                     | Pull the left column's window into the focused column       |
-| `window-consume-from-right`                                                                    | Pull the right column's window into the focused column      |
-| `window-consume-left`                                                                          | Stack the focused window into the column left               |
-| `window-consume-or-expel-left`                                                                 | Split the window out, or stack it into the column left      |
-| `window-consume-or-expel-right`                                                                | Split the window out, or stack it into the column right     |
-| `window-consume-right`                                                                         | Stack the focused window into the column right              |
-| `window-cycle-primary-extent`                                                                  | Cycle the focused area's primary extent through presets     |
-| `window-cycle-primary-extent-back`                                                             | Cycle the primary extent presets in reverse                 |
-| `window-cycle-secondary-extent`                                                                | Cycle the focused area's secondary extent through presets   |
-| `window-cycle-secondary-extent-back`                                                           | Cycle the secondary extent presets in reverse               |
-| `window-modify-height-down <delta>`                                                            | Resize the focused window from its bottom edge              |
-| `window-modify-height-up <delta>`                                                              | Resize the focused window from its top edge                 |
-| `window-modify-primary-extent <delta>`                                                         | Change the focused area's primary extent by a fraction      |
-| `window-modify-secondary-extent <delta>`                                                       | Change the focused area's secondary extent by a fraction    |
-| `window-modify-width-left <delta>`                                                             | Resize the focused column from its left edge                |
-| `window-modify-width-right <delta>`                                                            | Resize the focused column from its right edge               |
-| `window-move-by <delta-x> <delta-y> [--window <window-id>]`                                    | Move the floating window by logical pixels                  |
-| `window-move-down`                                                                             | Move down in its column, or a float to the bottom edge      |
-| `window-move-left`                                                                             | Move the focused window left, or a float to the left edge   |
-| `window-move-or-output-down`                                                                   | Move down, or the column to the output below                |
-| `window-move-or-output-left`                                                                   | Move the column left, or to the output left                 |
-| `window-move-or-output-right`                                                                  | Move the column right, or to the output right               |
-| `window-move-or-output-up`                                                                     | Move up, or the column to the output above                  |
-| `window-move-or-workspace-down`                                                                | Move down, or to the next workspace at the edge             |
-| `window-move-or-workspace-up`                                                                  | Move up, or to the previous workspace at the edge           |
-| `window-move-right`                                                                            | Move the focused window right, or a float to the right edge |
-| `window-move-to <anchor> <x> <y> [--window <window-id>]`                                       | Move the floating window to an anchored position            |
-| `window-move-to-output-down`                                                                   | Move the focused window to the output below                 |
-| `window-move-to-output-left`                                                                   | Move the focused window to the output left                  |
-| `window-move-to-output-next`                                                                   | Move the focused window to the next output                  |
-| `window-move-to-output-previous`                                                               | Move the focused window to the previous output              |
-| `window-move-to-output-right`                                                                  | Move the focused window to the output right                 |
-| `window-move-to-output-up`                                                                     | Move the focused window to the output above                 |
-| `window-move-up`                                                                               | Move up in its column, or a float to the top edge           |
-| `window-set-primary-extent <fraction>`                                                         | Set the focused area's primary extent fraction              |
-| `window-set-secondary-extent <fraction>`                                                       | Set the focused area's secondary extent fraction            |
-| `window-set-region <left\|right\|top\|bottom\|top_left\|top_right\|bottom_left\|bottom_right>` | Place the stacking window in a half or quarter              |
-| `window-clear-region`                                                                          | Restore the window's normal position and size               |
-| `window-swap-down`                                                                             | Swap with the window below                                  |
-| `window-swap-left`                                                                             | Swap with the window to the left                            |
-| `window-swap-next`                                                                             | Swap with the next window in layout order                   |
-| `window-swap-previous`                                                                         | Swap with the previous window in layout order               |
-| `window-swap-right`                                                                            | Swap with the window to the right                           |
-| `window-swap-up`                                                                               | Swap with the window above                                  |
+| Action                                                                                         | Effect                                                                 |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `column-center`                                                                                | Center the focused column in the viewport                              |
+| `column-move-left`                                                                             | Move the focused column one position left                              |
+| `column-move-right`                                                                            | Move the focused column one position right                             |
+| `column-move-to-first`                                                                         | Move the focused column to the first position                          |
+| `column-move-to-last`                                                                          | Move the focused column to the last position                           |
+| `column-move-to-output-down`                                                                   | Move the focused column to the output below                            |
+| `column-move-to-output-left`                                                                   | Move the focused column to the output left                             |
+| `column-move-to-output-right`                                                                  | Move the focused column to the output right                            |
+| `column-move-to-output-up`                                                                     | Move the focused column to the output above                            |
+| `layout-master-count-decrease`                                                                 | Demote the last master window to the stack                             |
+| `layout-master-count-increase`                                                                 | Promote the first stack window to master                               |
+| `layout-scroll-down`                                                                           | Scroll the strip toward its end                                        |
+| `layout-scroll-drag`                                                                           | Pan the strip while the bound button is held                           |
+| `layout-scroll-left`                                                                           | Scroll the strip toward its start                                      |
+| `layout-scroll-right`                                                                          | Scroll the strip toward its end                                        |
+| `layout-scroll-up`                                                                             | Scroll the strip toward its start                                      |
+| `layout-toggle-split`                                                                          | Toggle the focused tile's dwindle split direction                      |
+| `window-center`                                                                                | Center the focused floating window on its output                       |
+| `window-consume-from-left`                                                                     | Pull the left column's window into the focused column                  |
+| `window-consume-from-right`                                                                    | Pull the right column's window into the focused column                 |
+| `window-consume-left`                                                                          | Stack the focused window into the column left                          |
+| `window-consume-or-expel-left`                                                                 | Split the window out, stack it left, or move past a fullscreen column  |
+| `window-consume-or-expel-right`                                                                | Split the window out, stack it right, or move past a fullscreen column |
+| `window-consume-right`                                                                         | Stack the focused window into the column right                         |
+| `window-cycle-primary-extent`                                                                  | Cycle the focused area's primary extent through presets                |
+| `window-cycle-primary-extent-back`                                                             | Cycle the primary extent presets in reverse                            |
+| `window-cycle-secondary-extent`                                                                | Cycle the focused area's secondary extent through presets              |
+| `window-cycle-secondary-extent-back`                                                           | Cycle the secondary extent presets in reverse                          |
+| `window-modify-height-down <delta>`                                                            | Resize the focused window from its bottom edge                         |
+| `window-modify-height-up <delta>`                                                              | Resize the focused window from its top edge                            |
+| `window-modify-primary-extent <delta>`                                                         | Change the focused area's primary extent by a fraction                 |
+| `window-modify-secondary-extent <delta>`                                                       | Change the focused area's secondary extent by a fraction               |
+| `window-modify-width-left <delta>`                                                             | Resize the focused column from its left edge                           |
+| `window-modify-width-right <delta>`                                                            | Resize the focused column from its right edge                          |
+| `window-move-by <delta-x> <delta-y> [--window <window-id>]`                                    | Move the floating window by logical pixels                             |
+| `window-move-down`                                                                             | Move down in its column, or a float to the bottom edge                 |
+| `window-move-left`                                                                             | Move the focused window left, or a float to the left edge              |
+| `window-move-or-output-down`                                                                   | Move down, or the column to the output below                           |
+| `window-move-or-output-left`                                                                   | Move the column left, or to the output left                            |
+| `window-move-or-output-right`                                                                  | Move the column right, or to the output right                          |
+| `window-move-or-output-up`                                                                     | Move up, or the column to the output above                             |
+| `window-move-or-workspace-down`                                                                | Move down, or to the next workspace at the edge                        |
+| `window-move-or-workspace-up`                                                                  | Move up, or to the previous workspace at the edge                      |
+| `window-move-right`                                                                            | Move the focused window right, or a float to the right edge            |
+| `window-move-to <anchor> <x> <y> [--window <window-id>]`                                       | Move the floating window to an anchored position                       |
+| `window-move-to-output-down`                                                                   | Move the focused window to the output below                            |
+| `window-move-to-output-left`                                                                   | Move the focused window to the output left                             |
+| `window-move-to-output-next`                                                                   | Move the focused window to the next output                             |
+| `window-move-to-output-previous`                                                               | Move the focused window to the previous output                         |
+| `window-move-to-output-right`                                                                  | Move the focused window to the output right                            |
+| `window-move-to-output-up`                                                                     | Move the focused window to the output above                            |
+| `window-move-up`                                                                               | Move up in its column, or a float to the top edge                      |
+| `window-set-primary-extent <fraction>`                                                         | Set the focused area's primary extent fraction                         |
+| `window-set-secondary-extent <fraction>`                                                       | Set the focused area's secondary extent fraction                       |
+| `window-set-region <left\|right\|top\|bottom\|top_left\|top_right\|bottom_left\|bottom_right>` | Place the stacking window in a half or quarter                         |
+| `window-clear-region`                                                                          | Restore the window's normal position and size                          |
+| `window-swap-down`                                                                             | Swap with the window below                                             |
+| `window-swap-left`                                                                             | Swap with the window to the left                                       |
+| `window-swap-next`                                                                             | Swap with the next window in layout order                              |
+| `window-swap-previous`                                                                         | Swap with the previous window in layout order                          |
+| `window-swap-right`                                                                            | Swap with the window to the right                                      |
+| `window-swap-up`                                                                               | Swap with the window above                                             |
 
 `window-set-region` works on ordinary eligible windows in stacking, including explicitly floating windows. It rejects windows above tiling layouts, tiled, attached, fullscreen, pinned, and scratchpad windows, and regions smaller than the client's minimum size. Invalid requests leave placement and restore geometry unchanged. Repeating the current region is idempotent; choosing another region preserves the original normal box. `window-clear-region` restores that box and is a no-op without a placement. Setting a retained region while maximized leaves maximize and applies the region. Maximize and fullscreen round trips preserve placement within stacking; manual movement or resizing ends it. These actions remain available when `layout.stacking.drop_zones` is disabled, since that option controls pointer drop zones only.
 
