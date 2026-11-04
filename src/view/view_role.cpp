@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "input/seat.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/surface_shape.h"
@@ -65,23 +66,57 @@ namespace umbriel {
         && m_xsurface->hints->input == 0;
   }
 
+  bool View::preservesXwaylandFocus() { return xwayland() && resolvedRules().xwaylandPreserveFocus.value_or(false); }
+
+  bool View::restoresXwaylandPointer() { return xwayland() && resolvedRules().xwaylandRestorePointer.value_or(false); }
+
+  bool View::defersXwaylandActivation() const {
+    // A captured game needs its saved pointer enter before FocusIn. Ordinary X11 targets must still take real X
+    // focus during overview selection, so the outgoing game releases its X11 grab just as in workspace navigation.
+    return m_server->overview() != nullptr
+        && m_server->overview()->active()
+        && m_xwaylandPointerResume.has_value()
+        && !m_server->sessionLocked();
+  }
+
   void View::setActivatedState(bool activated) {
     if (m_toplevel != nullptr) {
       wlr_xdg_toplevel_set_activated(m_toplevel, activated);
       return;
     }
     m_xState.activated = activated;
+    if (defersXwaylandActivation()
+        || (!activated
+            && !m_server->sessionLocked()
+            && m_server->overview() != nullptr
+            && m_server->overview()->active())) {
+      // Native previews retain the current X11 owner. Returning to a captured game is deferred until pointer restore;
+      // selecting another X11 client, however, must release the game's real focus and grab.
+      return;
+    }
     if (activated) {
+      // Synchronize placement unless a remembered mouse lock still needs a stable X11 coordinate baseline.
+      if (preservesXwaylandFocus() || restoresXwaylandPointer()) {
+        syncXwaylandConfigure();
+      }
       // An ignored WM_CHANGE_STATE request can leave Wine waiting for a WM_STATE reply even though wlroots never
       // marked the surface minimized. Reassert NormalState on activation so the client can complete its restore.
       wlr_xwayland_surface_set_minimized(m_xsurface, false);
     }
-    wlr_xwayland_surface_activate(m_xsurface, activated);
+    // Keep only X11 focus signals: compositor focus, chrome and input routing still move normally.
+    if (!activated && m_mapped && !m_server->sessionLocked() && preservesXwaylandFocus()) {
+      return;
+    }
+    if (activated) {
+      m_server->xwayland()->activateSurface(m_xsurface);
+    } else {
+      wlr_xwayland_surface_activate(m_xsurface, false);
+    }
   }
 
   void View::reclaimXwaylandFocus() {
-    if (m_xsurface != nullptr) {
-      wlr_xwayland_surface_activate(m_xsurface, true);
+    if (m_xsurface != nullptr && !defersXwaylandActivation()) {
+      m_server->xwayland()->activateSurface(m_xsurface);
     }
   }
 
@@ -355,7 +390,7 @@ namespace umbriel {
     syncXwaylandConfigure();
   }
 
-  void View::syncXwaylandConfigure() {
+  void View::syncXwaylandConfigure(bool force) {
     if (m_xsurface == nullptr || m_xsurface->surface == nullptr || m_contentTree == nullptr) {
       return;
     }
@@ -366,6 +401,19 @@ namespace umbriel {
     m_xwaylandResizeConfigurePending = false;
     const XwaylandRegion region = xwaylandRegion();
     applyXwaylandScale(region.scale);
+    const bool preserveFocus = preservesXwaylandFocus();
+    if (m_xwaylandPointerResume.has_value()) {
+      const auto* constraint = wlr_pointer_constraints_v1_constraint_for_surface(
+          m_server->pointerConstraints(), rootSurface(), m_server->seat()->wlr()
+      );
+      if ((!preserveFocus && !restoresXwaylandPointer())
+          || (constraint != nullptr && constraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED)
+          || (constraint == nullptr
+              && !m_xwaylandPointerResume->pending
+              && View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) == this)) {
+        m_xwaylandPointerResume.reset();
+      }
+    }
     // The frame's position is its place in layout coordinates: a workspace slide moves the workspace tree around it
     // and does not change it. Its own animated motion is not published frame by frame either, because X clients, games
     // in particular, react to every move; the last tick of the animation publishes where the window came to rest.
@@ -403,13 +451,27 @@ namespace umbriel {
     }
     const int width = std::clamp(size.width, 1, kMaxSize);
     const int height = std::clamp(size.height, 1, kMaxSize);
-    if (lx == m_xConfigured.x
+    const bool fullscreen = scheduledFullscreen();
+    if (preserveFocus
+        && (!m_xState.activated || m_xwaylandPointerResume.has_value())
+        && m_xConfigured.x != INT_MIN
+        && m_xConfigured.fullscreen == fullscreen
+        && (!fullscreen || (width == m_xConfigured.width && height == m_xConfigured.height))) {
+      // XQueryPointer is relative to the configured X window, even without pointer events. A scrolling fullscreen
+      // window must keep that origin as well, or a game's query/recenter loop interprets layout movement as input.
+      // Entering fullscreen or changing its buffer size still publishes the new layout target, as Wine requires.
+      lx = m_xConfigured.x;
+      ly = m_xConfigured.y;
+    }
+    if (!force
+        && fullscreen == m_xConfigured.fullscreen
+        && lx == m_xConfigured.x
         && ly == m_xConfigured.y
         && width == m_xConfigured.width
         && height == m_xConfigured.height) {
       return;
     }
-    m_xConfigured = {.x = lx, .y = ly, .width = width, .height = height};
+    m_xConfigured = {.x = lx, .y = ly, .width = width, .height = height, .fullscreen = fullscreen};
     wlr_xwayland_surface_configure(
         m_xsurface, static_cast<int16_t>(lx), static_cast<int16_t>(ly), static_cast<uint16_t>(width),
         static_cast<uint16_t>(height)
@@ -466,8 +528,7 @@ namespace umbriel {
     if (!m_mapped || m_xsurface == nullptr) {
       return;
     }
-    m_xConfigured.x = INT_MIN;
-    syncXwaylandConfigure();
+    syncXwaylandConfigure(true);
   }
 
   void View::onXwaylandRequestConfigure(wl_listener* listener, void* data) {
@@ -530,8 +591,7 @@ namespace umbriel {
       wlr_xwayland_surface_configure(m_xsurface, m_xsurface->x, m_xsurface->y, m_xsurface->width, m_xsurface->height);
       return;
     }
-    m_xConfigured.x = INT_MIN;
-    syncXwaylandConfigure();
+    syncXwaylandConfigure(true);
   }
 
   void View::handleXwaylandRequestActivate() {

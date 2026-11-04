@@ -14,6 +14,7 @@
 #include "wlr.h"
 #include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
+#include "xwayland/xwayland.h"
 
 #include <algorithm>
 
@@ -102,6 +103,18 @@ namespace umbriel {
     View* previous = View::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface);
     // Read the rule before changing activation: a match.is_focused rule stops matching as soon as focus moves.
     const bool leavingConfinement = previous != nullptr && previous != seatTarget && previous->confinePointer();
+    if (previous != nullptr
+        && previous != seatTarget
+        && (previous->preservesXwaylandFocus() || previous->restoresXwaylandPointer())) {
+      // Do this while the outgoing game still owns activation, before applySeatFocus deactivates it or enters
+      // another client. Overview uses the identical neutral-input transition.
+      m_server.clearClientInputPreservingActivation();
+      m_server.cursor()->releaseRuleConfinement(*previous);
+      kLog.debug(
+          "released Xwayland input before focus handoff reason={} app_id='{}'", focusReasonName(reason),
+          previous->appId() != nullptr ? previous->appId() : ""
+      );
+    }
     m_server.registry().promote(view);
     view->setUrgent(false);
 
@@ -465,6 +478,9 @@ namespace umbriel {
     // the same teardown as clearKeyboardFocus.
     m_server.cursor()->clearPointerFocusOverridingGrab();
     clearKeyboardFocus();
+    if (Xwayland* xwayland = m_server.xwayland()) {
+      xwayland->clearFocus(true);
+    }
   }
 
   std::optional<SsdFrameHit> FocusManager::ssdFrameAt(double lx, double ly) const {

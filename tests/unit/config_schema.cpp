@@ -348,6 +348,40 @@ UMBRIEL_TEST(nestedWindowBorderSettingsParseAndDescribeTheirPaths) {
   }
 }
 
+UMBRIEL_TEST(nestedXwaylandSettingsParseAndDescribeTheirPaths) {
+  const auto dotted = load(
+      toml::parse(
+          "[[window_rule]]\nmatch.is_xwayland = true\nxwayland.preserve_focus = true\nxwayland.restore_pointer = "
+          "false\n"
+      )
+  );
+  CHECK(dotted.messages.empty());
+  const auto& rule = dotted.config.windowRules.at(0);
+  CHECK(rule.matchXwayland.value_or(false));
+  CHECK(rule.xwaylandPreserveFocus.value_or(false));
+  CHECK(!rule.xwaylandRestorePointer.value_or(true));
+  const auto nested = load(
+      toml::parse(
+          "[[window_rule]]\nmatch.is_xwayland = true\nxwayland = { preserve_focus = true, restore_pointer = false }\n"
+      )
+  );
+  CHECK(nested.messages.empty());
+  CHECK(nested.config.windowRules == dotted.config.windowRules);
+  const auto changed = load(
+      toml::parse(
+          "[[window_rule]]\nmatch.is_xwayland = true\nxwayland.preserve_focus = false\nxwayland.restore_pointer = "
+          "true\n"
+      )
+  );
+  CHECK(changed.messages.empty());
+  CHECK(changed.config.windowRules != dotted.config.windowRules);
+  const auto schema = umbriel::registry::describeConfig(umbriel::Config{});
+  for (const std::string_view key :
+       {"window_rule[].xwayland.preserve_focus", "window_rule[].xwayland.restore_pointer"}) {
+    CHECK(std::ranges::any_of(schema, [&](const auto& field) { return field.path == key; }));
+  }
+}
+
 UMBRIEL_TEST(pointerConfinementBooleanParsesAndReloads) {
   const auto enabled = load(toml::parse("[[window_rule]]\nconfine_pointer = true\n"));
   CHECK(enabled.messages.empty());
