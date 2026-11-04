@@ -79,7 +79,7 @@ namespace umbriel {
       wlr_scene_tree* snapshot, const std::array<float, 4>& innerColor, const std::array<float, 4>& outerColor,
       float opacity, std::vector<BorderSnapshot>& out
   ) const {
-    if (!bordersVisible() || m_border == nullptr) {
+    if (!bordersVisible() || m_border == nullptr || !m_border->node.enabled) {
       return;
     }
     // Straight colours at the opacity the ring is drawn with right now, so the fade starts from what is on screen
@@ -126,7 +126,8 @@ namespace umbriel {
         .optimized = false,
     };
     const auto& appearance = config().appearance;
-    const int borderWidth = rule.borderWidth.value_or(appearance.borderWidth);
+    const bool inset = rule.borderPlacement == BorderPlacement::Inset;
+    const int borderWidth = inset ? appearance.borderWidth : rule.borderWidth.value_or(appearance.borderWidth);
     const int outerBorderWidth = rule.outerBorderWidth.value_or(appearance.outerBorderWidth);
     const int cornerRadius = rule.cornerRadius.value_or(appearance.cornerRadius);
     const bool changed = borderWidth != m_borderWidth
