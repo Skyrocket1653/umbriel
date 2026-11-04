@@ -181,8 +181,8 @@ namespace umbriel {
     m_attachmentTree = wlr_scene_tree_create(m_sceneTree);
 
     // A scene-node capture uses the node's scene as its render source. Keep a
-    // second scene containing only the client surfaces so transparency cannot
-    // reveal the wallpaper, another window, or compositor effects.
+    // separate scene for the client surfaces and opt-in window-local chrome.
+    // Transparent areas cannot reveal the wallpaper or other windows.
     m_captureScene = wlr_scene_create();
     if (m_captureScene != nullptr) {
       if (ColorManager* colorManager = m_server->colorManager();
@@ -348,7 +348,9 @@ namespace umbriel {
     if (m_captureScene != nullptr) {
       wlr_scene_node_destroy(&m_captureScene->tree.node);
       m_captureScene = nullptr;
+      m_captureInsetBorder = nullptr;
     }
+    m_captureChalkBorder.reset();
     if (m_sceneTree != nullptr) {
       // The attachment's nodes hang under the frame: release them first so their owner never destroys a freed node.
       m_chromeAttachment.reset();
