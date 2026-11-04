@@ -2374,6 +2374,36 @@ UMBRIEL_TEST(windowStartupMatcherLoadsBoolean) {
   CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
 }
 
+UMBRIEL_TEST(windowInsetBorderCaptureSettingsLoad) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(R"toml(
+[appearance.border]
+in_capture = true
+
+[appearance.border.chalk]
+pixel_seconds_per_update = 8.0
+segment_seconds_per_update = 12.0
+
+[[window_rule]]
+match.is_fullscreen = true
+border.in_capture = false
+border.chalk = { pixel_seconds_per_update = 4.0 }
+)toml");
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK(config.appearance.border.inCapture);
+  const auto resolved = umbriel::resolveWindowRules(
+      config, "video", std::nullopt, std::nullopt, ContentType::None, {.fullscreen = true}, 0
+  );
+  CHECK(resolved.borderInCapture == false);
+  auto chalk = config.appearance.border.chalk;
+  chalk.overlay(resolved.borderChalk);
+  CHECK(chalk.pixelSecondsPerUpdate == 4.0);
+  CHECK(chalk.segmentSecondsPerUpdate == 12.0);
+}
+
 UMBRIEL_TEST(layerMatchersLoadLayerAndStartup) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

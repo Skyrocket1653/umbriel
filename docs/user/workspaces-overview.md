@@ -2,6 +2,8 @@
 
 The overview displays every workspace and lets you navigate, focus, close, and move windows.
 
+Opening overview preserves the selected window's activation, focused appearance and `match.is_focused` rules. Selecting another window transfers that state, including when the shell holds an overview keyboard-capture layer. Keyboard input stays with overview or its shell UI until overview closes; the selected application does not receive it.
+
 ## Settings and behavior
 
 ```toml

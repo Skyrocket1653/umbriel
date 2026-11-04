@@ -319,6 +319,35 @@ int main() {
   return RUN_TESTS();
 }
 
+UMBRIEL_TEST(nestedWindowBorderSettingsParseAndDescribeTheirPaths) {
+  const auto dotted = load(
+      toml::parse(
+          "[[window_rule]]\nborder.style = \"chalk\"\nborder.placement = \"inset\"\n"
+          "border.in_capture = true\nborder.chalk.cell_px = 2.0\n"
+      )
+  );
+  CHECK(dotted.messages.empty());
+  const auto& rule = dotted.config.windowRules.at(0);
+  CHECK(rule.borderStyle == umbriel::BorderStyle::Chalk);
+  CHECK(rule.borderPlacement == umbriel::BorderPlacement::Inset);
+  CHECK(rule.borderInCapture.value_or(false));
+  CHECK_EQ(rule.borderChalk.cellPx.value_or(0.0), 2.0);
+  const auto nested = load(
+      toml::parse(
+          "[[window_rule]]\nborder = { style = \"chalk\", placement = \"inset\", "
+          "in_capture = true, chalk = { cell_px = 2.0 } }\n"
+      )
+  );
+  CHECK(nested.messages.empty());
+  CHECK(nested.config.windowRules == dotted.config.windowRules);
+  const auto schema = umbriel::registry::describeConfig(umbriel::Config{});
+  for (const std::string_view key :
+       {"window_rule[].border.style", "window_rule[].border.placement", "window_rule[].border.in_capture",
+        "window_rule[].border.chalk.cell_px"}) {
+    CHECK(std::ranges::any_of(schema, [&](const auto& field) { return field.path == key; }));
+  }
+}
+
 UMBRIEL_TEST(pointerConfinementBooleanParsesAndReloads) {
   const auto enabled = load(toml::parse("[[window_rule]]\nconfine_pointer = true\n"));
   CHECK(enabled.messages.empty());

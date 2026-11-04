@@ -27,6 +27,7 @@ namespace umbriel {
     // rather than destroying it, so existence alone does not answer this.
     bool bordersVisible() const;
     wlr_scene_tree* borderTree() const { return m_borderTree; }
+    wlr_scene_border* borderNode() const { return m_border; }
     void setBordersEnabled(bool enabled);
     void updateBorderGeometry(int contentWidth, int contentHeight, int topExtension);
     // `alpha` premultiplies the border color so a fading view's ring fades with it.
