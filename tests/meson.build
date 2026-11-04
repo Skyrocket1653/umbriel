@@ -75,6 +75,7 @@ unit_tests = [
   ['tabbed-layout', ['unit/tabbed_layout.cpp'], []],
   ['cheatsheet-rows', ['unit/cheatsheet_rows.cpp'], []],
   ['shortcut-labels', ['unit/shortcut_labels.cpp'], []],
+  ['chalk', ['unit/chalk.cpp'], []],
   ['border-ring', ['unit/border_ring.cpp'], []],
   ['ssd-frame-geometry', ['unit/ssd_frame_geometry.cpp'], []],
   ['title-bar-icon', ['unit/title_bar_icon.cpp'], [umbriel_core_dep]],

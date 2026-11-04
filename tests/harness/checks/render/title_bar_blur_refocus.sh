@@ -164,3 +164,25 @@ scale=1
 expect_rounded_corners "$window"
 
 echo "transparent-border title bars retained rounded corners through focus, blur, scaling, and window overrides"
+
+# A patterned, hidden, or inset border cannot use opaque fallback colors to hide the title fill's inner arc.
+for border in chalk off inset; do
+  style=$border
+  placement=outside
+  [[ $border == inset ]] && style=solid && placement=inset
+  cat >>"$UMBRIEL_CONFIG" <<EOF_CONFIG
+[[window_rule]]
+match.title = "^blur-refocus-"
+border_color_unfocused = "#F0EFF7FF"
+border.style = "$style"
+border.placement = "$placement"
+border.chalk.background = "#00000000"
+border.chalk.foreground = ["#00000000"]
+EOF_CONFIG
+  "$UMBRIEL" msg config-reload >/dev/null
+  settle_frame
+  window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.active == false)')
+  expect_rounded_corners "$window"
+done
+
+echo "native border styles preserve rounded title fill when the outside ring is transparent or absent"
