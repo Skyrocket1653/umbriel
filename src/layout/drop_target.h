@@ -45,8 +45,9 @@ namespace umbriel {
   };
 
   // `worldX`/`worldY` are layout coordinates. The normal cursor path clips the hint to the output's usable area and
-  // reserves its viewport edges. A projected overview path can preserve the hint until after applying its own output
-  // bounds and use only the scrolling strip's content-space targets.
+  // reserves its viewport edges. In scrolling layouts, fullscreen drags and columns with a visible fullscreen member
+  // offer adjacent columns instead of row or tab targets. A projected overview path can preserve the hint until after
+  // applying its own output bounds and use only the scrolling strip's content-space targets.
   DropTarget computeDropTarget(
       Workspace& workspace, double worldX, double worldY, const View* excludedView, const DropTargetOptions& options
   );
