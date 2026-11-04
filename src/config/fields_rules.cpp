@@ -198,6 +198,7 @@ namespace umbriel {
                 return read(node);
               }
           ),
+          strict(boolean("is_xwayland", &W::matchXwayland)),
           strict(boolean("is_focused", &W::matchFocused)),
           strict(boolean("is_floating", &W::matchFloating)),
           strict(boolean("is_fullscreen", &W::matchFullscreen)),
@@ -227,9 +228,14 @@ namespace umbriel {
           boolean("in_capture", &W::borderInCapture),
           registry::table("chalk", &W::borderChalk, chalkFields()),
       };
+      static const registry::Fields<W> xwayland{
+          boolean("preserve_focus", &W::xwaylandPreserveFocus),
+          boolean("restore_pointer", &W::xwaylandRestorePointer),
+      };
       static const registry::Fields<W> fields{
           registry::table<W>("match", self, match, rejectUnlessTable<W>),
           registry::table<W>("border", self, border),
+          registry::table<W>("xwayland", self, xwayland),
           boolean("default_floating", &W::defaultFloating),
           boolean("default_fullscreen", &W::defaultFullscreen),
           boolean("default_maximize_to_edges", &W::defaultMaximizeToEdges),

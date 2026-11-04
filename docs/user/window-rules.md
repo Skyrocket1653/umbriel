@@ -17,6 +17,7 @@ default_workspace = 2
 | `match.xdg_tag`               | Match a client-defined XDG toplevel tag.                                                      |
 | `match.content_type`          | Match `"none"`, `"photo"`, `"video"`, or `"game"`.                                            |
 | `match.layout`                | Match the window's workspace layout: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`. |
+| `match.is_xwayland`           | Match Xwayland windows with `true`, or native Wayland windows with `false`.                   |
 | `match.is_focused`            | Match current focus state.                                                                    |
 | `match.is_floating`           | Match current floating state.                                                                 |
 | `match.is_fullscreen`         | Match the compositor's current requested fullscreen state.                                    |
@@ -470,3 +471,19 @@ dim_behind = 0.5
 ```
 
 While the matched window is presented, content below it on its output darkens. The window, its popups, and surfaces above it keep their normal brightness. Dimming follows the opening fade and clears when the window unmaps or leaves the output. It is suppressed in the overview. It does not intercept pointer input. Several dimming surfaces stack their dimming. Like other dynamic visual rules, it refreshes on config reload and identity or state changes; a later matching `dim_behind = 0.0` disables it. To dim only while focused, add `match.is_focused = true` to the rule.
+
+## Xwayland compatibility
+
+Use the `xwayland` subtable in a window rule for game compatibility:
+
+```toml
+[[window_rule]]
+match.is_xwayland = true
+match.app_id = "^YOUR_GAME_APP_ID$"
+xwayland.preserve_focus = true
+xwayland.restore_pointer = true
+```
+
+`xwayland.preserve_focus` retains the game's Xwayland activation across compositor focus handoffs. `xwayland.restore_pointer` saves and restores its pointer state when returning to the game. Both default to `false`, apply only to Xwayland windows, and can be enabled or disabled independently. Later matching rules override only the fields they set.
+
+The same settings can be written as `xwayland = { preserve_focus = true, restore_pointer = true }` within the rule. Compositor focus navigation, overview, and exclusive shell keyboard input remain available.
