@@ -211,9 +211,24 @@ namespace umbriel {
           && primaryWorld <= static_cast<double>(edge + kScrollingEdgeDropWidth);
     }
 
+    bool fullscreenDropNeedsColumn(const ScrollingLayout& layout, const View* dragged, int columnIndex) {
+      if (columnIndex < 0 || columnIndex >= static_cast<int>(layout.columns().size())) {
+        return false;
+      }
+      if (dragged != nullptr && (dragged->scheduledFullscreen() || dragged->currentFullscreen())) {
+        return true;
+      }
+      const Column& column = layout.columns()[static_cast<size_t>(columnIndex)];
+      return std::ranges::any_of(column.views, [&](const View* view) {
+        return view != dragged
+            && !hiddenTab(column, view)
+            && (view->scheduledFullscreen() || view->currentFullscreen());
+      });
+    }
+
     ScrollingTarget computeScrollingTarget(
         const Workspace& workspace, const ScrollingLayout& layout, const wlr_box& usable, const wlr_box& visible,
-        double scroll, double worldX, double worldY, const DropTargetOptions& options
+        double scroll, double worldX, double worldY, const View* dragged, const DropTargetOptions& options
     ) {
       const bool v = workspace.scrollingVertical();
       const int edgePad = workspace.layoutConfig().edgePad;
@@ -251,6 +266,11 @@ namespace umbriel {
         if (layoutPrimary < columnPrimary + columnExtent * leadingFraction
             || layoutPrimary > columnPrimary + columnExtent * trailingFraction) {
           continue;
+        }
+        // Fullscreen members cover every row in their column. Keep either direction of a fullscreen drop
+        // beside the destination, using the same target for the preview and the eventual insertion.
+        if (fullscreenDropNeedsColumn(layout, dragged, columnIndex)) {
+          return {.column = columnIndex + (layoutPrimary >= columnPrimary + columnExtent * 0.5 ? 1 : 0), .row = -1};
         }
         const Column& column = layout.columns()[static_cast<size_t>(columnIndex)];
         int nearestRow = 0;
@@ -444,7 +464,7 @@ namespace umbriel {
       const ScrollingLayout& layout = *scrolling;
       const double scroll = layout.scroll();
       const ScrollingTarget target =
-          computeScrollingTarget(workspace, layout, usable, visible, scroll, worldX, worldY, options);
+          computeScrollingTarget(workspace, layout, usable, visible, scroll, worldX, worldY, excludedView, options);
       result.column = target.column;
       result.row = target.row;
       if (target.row >= 0) {
@@ -515,9 +535,10 @@ namespace umbriel {
   }
 
   void applyDrop(
-      Server& server, View& view, Workspace& target, const DropTarget& drop, const DropColumnWidth* columnWidth,
-      bool animate
+      Server& server, View& view, Workspace& target, const DropTarget& requestedDrop,
+      const DropColumnWidth* columnWidth, bool animate
   ) {
+    DropTarget drop = requestedDrop;
     if (server.scratchpadManager() != nullptr && server.scratchpadManager()->contains(&view)) {
       return;
     }
@@ -561,6 +582,13 @@ namespace umbriel {
       target.exitFullscreenForIncomingView(&view);
     } else {
       target.layout().removeView(&view);
+    }
+    // Recheck at commit time: fullscreen state can change after the last pointer motion. In that case,
+    // open a column before the destination instead of committing a stale row or tab target.
+    if (const ScrollingLayout* scrolling = target.scrollingLayout();
+        scrolling != nullptr && drop.row >= 0 && fullscreenDropNeedsColumn(*scrolling, &view, drop.column)) {
+      drop.row = -1;
+      drop.tab = nullptr;
     }
     TabbedContainers* containers = target.layout().tabbedContainers();
     const bool joinedTabs = drop.row >= 0
