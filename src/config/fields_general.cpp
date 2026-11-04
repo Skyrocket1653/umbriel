@@ -420,6 +420,7 @@ namespace umbriel {
           boolean("nvidia_sync_workaround", &G::nvidiaSyncWorkaround),
           boolean("show_cheatsheet", &G::showCheatsheet),
           boolean("focus_on_activate", &G::focusOnActivate),
+          boolean("systemd_app_scopes", &G::systemdAppScopes),
           boolean("attach_modal_dialogs", &G::attachModalDialogs),
           boolean("honor_restored_maximize", &G::honorRestoredMaximize),
           registry::strings("autostart", &G::autostart),

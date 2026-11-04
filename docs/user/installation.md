@@ -304,7 +304,7 @@ start-umbriel
 
 The launcher loads the login profile for supported shells such as bash, zsh, and fish. Environment variables from that profile, including `PATH`, are available to Umbriel and applications started in the session. Interactive shell files such as `~/.zshrc` are not loaded. In a systemd-managed session, the launcher imports the login environment into the user manager before starting Umbriel. Login-profile values take precedence over values with the same names from `environment.d`; variables found only in the user manager remain available. The direct fallback inherits the same login environment without importing it.
 
-In a managed native session, Umbriel places startup, autostart, event, and `spawn` commands in scopes bound to the compositor service, so they are cleaned up when the session ends. This requires systemd 254 or newer.
+In a managed native session, Umbriel places startup, autostart, event, and `spawn` commands in scopes bound to the compositor service, so they are cleaned up when the session ends. This requires systemd 254 or newer. Set `general.systemd_app_scopes = false` to launch commands directly, for example when UWSM manages application units. Reloading changes how future commands launch. Umbriel still publishes its session environment and sends its systemd readiness notification.
 
 The compositor service queues the graphical session targets at startup and reports readiness only after its display and IPC sockets are available and its session environment has been published to systemd and D-Bus. Services ordered after `graphical-session.target`, including desktop portals, wait for that readiness notification. Configured startup commands also wait for the environment import to finish.
 

@@ -1154,6 +1154,8 @@ namespace umbriel {
       bool showCheatsheet = true;
       // Honor activation requests by focusing and revealing the target window.
       bool focusOnActivate = false;
+      // Wrap future commands in user scopes when running as a managed native session.
+      bool systemdAppScopes = true;
       // Hang a modal dialog on its parent's frame, so it follows the parent and holds its input.
       bool attachModalDialogs = true;
       // Honor maximized state restored by a client while its window opens.

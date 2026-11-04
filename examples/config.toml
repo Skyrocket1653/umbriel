@@ -24,6 +24,9 @@ files = []
 # https://docs.noctalia.dev/umbriel/configuration/#general
 #
 [general]
+# Set false when an external launcher such as UWSM manages application units.
+# Applies to future commands after reload.
+# systemd_app_scopes = true
 # autostart = ["noctalia", "kitty"]
 # xwayland = false
 # Sharp X11 apps and games on scaled outputs; they see physical resolutions.
