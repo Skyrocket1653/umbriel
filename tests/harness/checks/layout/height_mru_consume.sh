@@ -120,6 +120,25 @@ wait_for_separate_columns
 accepts window-consume-right
 accepts window-consume-or-expel-right
 wait_for_separate_columns
+# A fullscreen destination trades column positions with the focused window.
+# After leaving fullscreen the layout must still contain two separate columns.
+accepts window-focus "$(field_of harness-a id)"
+accepts window-toggle-fullscreen
+accepts window-focus "$(field_of harness-b id)"
+"$UMBRIEL" settle > /dev/null
+"$UMBRIEL" tearing --json | jq -e '.surfaces[] | select(.title == "harness-a" and .fullscreen)' > /dev/null
+accepts window-consume-or-expel-right
+wait_for_focus harness-b
+accepts window-focus "$(field_of harness-a id)"
+accepts window-toggle-fullscreen
+"$UMBRIEL" settle > /dev/null
+wait_for_separate_columns
+if (( $(field_of harness-b x) <= $(field_of harness-a x) )); then
+  echo "expected harness-b to move to the right of the fullscreen column"
+  exit 1
+fi
+accepts window-focus "$(field_of harness-b id)"
+
 b_workspace=$(field_of harness-b workspace)
 
 accepts workspace-switch 2
