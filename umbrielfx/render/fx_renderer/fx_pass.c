@@ -128,6 +128,14 @@ static struct fx_target_buffers* target_buffers(struct fx_gles_render_pass* pass
   return pass->group_depth != 0 ? &pass->fx_offscreen_buffers->group : &pass->fx_offscreen_buffers->output;
 }
 
+struct fx_effect_history_state {
+  int width, height, logical_width, logical_height;
+  float scale;
+  float seed[4];
+  struct fx_effect_geometry border;
+  float corners[4];
+};
+
 struct fx_animation_output_history {
   struct wl_list link;
   struct wlr_output* output;
@@ -137,6 +145,8 @@ struct fx_animation_output_history {
   struct wl_listener renderer_destroy;
   struct fx_framebuffer* buffers[2];
   unsigned previous;
+  float time;
+  struct fx_effect_history_state state;
   bool valid;
   bool allocation_failed;
   uint32_t format;
@@ -147,6 +157,8 @@ struct fx_animation_history_update {
   struct wl_list link;
   struct fx_animation_output_history* history;
   unsigned previous;
+  float time;
+  struct fx_effect_history_state state;
 };
 
 static void animation_history_drop_buffer(struct fx_framebuffer** buffer) {
@@ -277,12 +289,15 @@ static void animation_history_set_format(
 }
 
 static bool animation_history_queue_update(
-    struct fx_gles_render_pass* pass, struct fx_animation_output_history* output_history, unsigned previous
+    struct fx_gles_render_pass* pass, struct fx_animation_output_history* output_history, unsigned previous,
+    float time, const struct fx_effect_history_state* state
 ) {
   struct fx_animation_history_update* update;
   wl_list_for_each(update, &pass->animation_history_updates, link) {
     if (update->history == output_history) {
       update->previous = previous;
+      update->time = time;
+      update->state = *state;
       return true;
     }
   }
@@ -292,6 +307,8 @@ static bool animation_history_queue_update(
   }
   update->history = output_history;
   update->previous = previous;
+  update->time = time;
+  update->state = *state;
   wl_list_insert(pass->animation_history_updates.prev, &update->link);
   return true;
 }
@@ -301,6 +318,8 @@ static void animation_history_commit_updates(struct fx_gles_render_pass* pass, b
   wl_list_for_each_safe(update, tmp, &pass->animation_history_updates, link) {
     if (success) {
       update->history->previous = update->previous;
+      update->history->time = update->time;
+      update->history->state = update->state;
       update->history->valid = true;
     }
     wl_list_remove(&update->link);
@@ -795,12 +814,14 @@ static void draw_animation_texture(
     const struct wlr_box* logical_box, int expand, const struct fx_effect_geometry* geometry,
     const float* corner_radius, const float* pointer, const struct fx_cursor_path* pointer_path, const float* audio,
     enum wl_output_transform transform, const pixman_region32_t* clip, struct wlr_texture* previous_texture,
-    const struct wlr_box* previous_source_box, const float projection[9], bool blend, bool mark_updated
+    const struct wlr_box* previous_source_box, float previous_time, const float projection[9], bool blend,
+    bool mark_updated
 ) {
   TRACY_BOTH_ZONES_START(pass->buffer->renderer);
   struct fx_texture* texture = fx_get_texture(wlr_texture);
   glUseProgram(shader->program);
   fx_effect_shader_bind_parameters(shader, parameters);
+  glUniform1f(shader->previous_time, previous_time);
   static const float silent_audio[FX_AUDIO_VALUES] = {0};
   const float* audio_input = audio != NULL ? audio : silent_audio;
   if (shader->audio_tex >= 0) {
@@ -922,8 +943,10 @@ static void draw_animation_texture(
     struct fx_texture* previous = fx_get_texture(previous_texture);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, previous->tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+    // Same-grid reuse must read exactly one texel, including at damage edges.
+    const GLint previous_filter = previous_time >= 0.0F ? GL_NEAREST : filter;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, previous_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, previous_filter);
     glUniform1i(shader->previous_tex, 1);
     wlr_matrix_identity(sample_matrix);
     wlr_matrix_translate(
@@ -1222,7 +1245,7 @@ static void emit_light(
   draw_animation_texture(
       pass, texture, composite->shader, composite->parameters, &local, source_box, logical_box, composite->expand,
       geometry, composite->corner_radius, composite->pointer, composite->pointer_path, composite->audio,
-      composite->transform, NULL, previous_texture, previous_box, projection, false, false
+      composite->transform, NULL, previous_texture, previous_box, -1.0F, projection, false, false
   );
   // 2. Threshold into level 0 (half resolution, margin around).
   glBindFramebuffer(GL_FRAMEBUFFER, cache->framebuffers[0]);
@@ -1317,6 +1340,29 @@ static void effect_composite(
   struct fx_animation_output_history* output_history = NULL;
   struct wlr_texture* previous_texture = NULL;
   struct wlr_box previous_box = {0};
+  float previous_time = -1.0F;
+  struct fx_effect_history_state state = {0};
+  float time = 0.0F;
+  if (shader->previous_time >= 0 && shader->previous_tex >= 0) {
+    state.width = box->width;
+    state.height = box->height;
+    state.logical_width = logical_box->width;
+    state.logical_height = logical_box->height;
+    state.scale = parameters->scale;
+    memcpy(state.seed, parameters->random_seed, sizeof(state.seed));
+    if (geometry != NULL) {
+      state.border = *geometry;
+    }
+    if (corner_radius != NULL) {
+      memcpy(state.corners, corner_radius, sizeof(state.corners));
+    }
+    for (unsigned i = 0; i < parameters->uniform_count && i < FX_UNIFORMS_MAX; i++) {
+      const struct fx_uniform* uniform = &parameters->uniforms[i];
+      if (uniform->type == FX_UNIFORM_FLOAT && uniform->count > 0 && strcmp(uniform->name, "umbriel_time") == 0) {
+        time = uniform->floats[0];
+      }
+    }
+  }
   const uint32_t format = offscreen_buffer_format(pass, true);
   if (shader->previous_tex >= 0 && composite->history != NULL && composite->output != NULL) {
     output_history =
@@ -1334,6 +1380,15 @@ static void effect_composite(
             .width = previous_texture->width,
             .height = previous_texture->height,
         };
+        const struct fx_effect_history_state* old = &output_history->state;
+        if (shader->previous_time >= 0 && old->width == state.width && old->height == state.height
+            && old->logical_width == state.logical_width && old->logical_height == state.logical_height
+            && old->scale == state.scale && memcmp(old->seed, state.seed, sizeof(state.seed)) == 0
+            && wlr_box_equal(&old->border.hole, &state.border.hole)
+            && memcmp(old->border.radius, state.border.radius, sizeof(state.border.radius)) == 0
+            && memcmp(old->corners, state.corners, sizeof(state.corners)) == 0) {
+          previous_time = output_history->time;
+        }
       } else {
         if (previous_texture != NULL) {
           wlr_texture_destroy(previous_texture);
@@ -1361,7 +1416,7 @@ static void effect_composite(
     struct wlr_texture* result_texture =
         !failed && result != NULL ? fx_texture_from_buffer(&renderer->wlr_renderer, result->buffer) : NULL;
     if (result_texture != NULL && fx_get_texture(result_texture)->target == GL_TEXTURE_2D) {
-      if (!animation_history_queue_update(pass, output_history, write)) {
+      if (!animation_history_queue_update(pass, output_history, write, time, &state)) {
         pass->animation_failed = true;
         wlr_texture_destroy(result_texture);
         goto fallback;
@@ -1389,7 +1444,7 @@ static void effect_composite(
       draw_animation_texture(
           pass, texture, shader, parameters, &history_box, source_box, logical_box, expand, geometry, corner_radius,
           composite->pointer, composite->pointer_path, composite->audio, transform, history_clip_ptr, previous_texture,
-          previous_texture != NULL ? &previous_box : NULL, history_projection, false, false
+          previous_texture != NULL ? &previous_box : NULL, previous_time, history_projection, false, false
       );
       if (history_clip_ptr != NULL) {
         pixman_region32_fini(&history_clip);
@@ -1431,7 +1486,7 @@ fallback:
   draw_animation_texture(
       pass, texture, shader, parameters, box, source_box, logical_box, expand, geometry, corner_radius,
       composite->pointer, composite->pointer_path, composite->audio, transform, output_clip, previous_texture,
-      previous_texture != NULL ? &previous_box : NULL, pass->projection_matrix, !composite->replace, true
+      previous_texture != NULL ? &previous_box : NULL, previous_time, pass->projection_matrix, !composite->replace, true
   );
   if (composite->light != NULL) {
     emit_light(
@@ -1626,7 +1681,7 @@ bool fx_render_pass_end_animation_shadow(
   glUniform2f(glGetUniformLocation(horizontal->program, "shadow_step"), softness / (8.0F * full.width), 0);
   draw_animation_texture(
       pass, caster, horizontal, &params, &reduced, &full, &full, 0, NULL, NULL, NULL, NULL, NULL,
-      WL_OUTPUT_TRANSFORM_NORMAL, NULL, NULL, NULL, pass->projection_matrix, true, true
+      WL_OUTPUT_TRANSFORM_NORMAL, NULL, NULL, NULL, -1.0F, pass->projection_matrix, true, true
   );
   struct wlr_texture* blurred = pop_animation_capture(pass);
   pop_animation_capture(pass);
@@ -1647,7 +1702,7 @@ bool fx_render_pass_end_animation_shadow(
   glUniform1i(glGetUniformLocation(vertical->program, "shadow_mask"), 1);
   draw_animation_texture(
       pass, blurred, vertical, &params, &full, &reduced, &reduced, 0, NULL, NULL, NULL, NULL, NULL,
-      WL_OUTPUT_TRANSFORM_NORMAL, clip, NULL, NULL, pass->projection_matrix, true, true
+      WL_OUTPUT_TRANSFORM_NORMAL, clip, NULL, NULL, -1.0F, pass->projection_matrix, true, true
   );
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_2D, 0);

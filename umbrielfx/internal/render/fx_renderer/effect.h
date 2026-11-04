@@ -33,7 +33,7 @@ struct fx_effect_shader {
   char label[128]; // for diagnostics; truncated
   GLuint program;
   GLint proj, tex_proj, position, tex, sample_matrix;
-  GLint previous_tex, previous_sample_matrix;
+  GLint previous_tex, previous_sample_matrix, previous_time;
   GLint incoming_tex, audio_tex;
   GLint progress, linear_progress, direction, random_seed;
   GLint size, scale, expand;

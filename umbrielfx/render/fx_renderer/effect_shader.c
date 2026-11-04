@@ -27,6 +27,7 @@ static const char kPreamble[] =
     "uniform vec2 umbriel_size;\n"
     "uniform float umbriel_scale;\n"
     "uniform float umbriel_time;\n"
+    "uniform float umbriel_previous_time;\n"
     "uniform sampler2D umbriel_audio_bands;\n"
     "uniform float umbriel_audio_ready;\n"
     "float umbriel_audio_available() { return umbriel_audio_ready; }\n"
@@ -424,6 +425,7 @@ struct fx_effect_shader* fx_effect_shader_create(
   shader->audio_tex = glGetUniformLocation(shader->program, "umbriel_audio_bands");
   shader->incoming_tex = glGetUniformLocation(shader->program, "umbriel_incoming_texture");
   shader->previous_tex = glGetUniformLocation(shader->program, "umbriel_previous_texture");
+  shader->previous_time = glGetUniformLocation(shader->program, "umbriel_previous_time");
   shader->previous_sample_matrix = glGetUniformLocation(shader->program, "umbriel_previous_sample_matrix");
   shader->progress = glGetUniformLocation(shader->program, "umbriel_progress");
   shader->linear_progress = glGetUniformLocation(shader->program, "umbriel_linear_progress");
