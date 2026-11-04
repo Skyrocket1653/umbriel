@@ -295,3 +295,48 @@ offset_y = 2
 | `offset_y` | `2`     | Vertical offset from -200 to 200.               |
 
 A window's shadow falls on everything below it, including other floating, pinned, or scratchpad windows it overlaps. Tiled windows never shadow each other. Shadows are hidden for fullscreen windows. During a [custom window animation](animation.md#custom-effects), the shadow follows the visible shape produced by the shader. A [window rule](window-rules.md#decoration) can turn the shadow on or off for the windows it matches.
+
+## Native chalk borders
+
+Set `border.style = "chalk"` in a window rule to fill the native border with an animated speckle pattern. The default style is `"solid"`. Set `border.placement = "inset"` to draw inside the window, including fullscreen windows, without reserving space. Inset borders use the rule's `border_width`. The default placement is `"outside"`.
+
+```toml
+[appearance.border.chalk]
+pixel_seconds_per_update = 8.0
+segment_seconds_per_update = 8.0
+fade_seconds = 2.0
+fade_fps = 12
+boundary_jump_fraction = 0.4
+cell_px = 1.0
+always_flip_spacing = 8
+palette_repeats = 1.0
+randomize_initial_pattern = true
+background = "#000000FF"
+foreground = ["#ABB2BFFF"]
+
+[[window_rule]]
+match.is_fullscreen = true
+match.is_cast_target = true
+border.style = "chalk"
+border.placement = "inset"
+border_width = 4
+border.chalk = { randomize_initial_pattern = false, background = "#00000000", foreground = ["#E05561FF"] }
+
+[appearance.screen.inner_border]
+in_capture = false
+when_not_casting = { style = "off" }
+
+[appearance.screen.inner_border.when_casting]
+style = "chalk"
+width = 4
+chalk = { randomize_initial_pattern = false, background = "#00000000", foreground = ["#E05561FF"] }
+unfocused_chalk = { foreground = ["#8F3944FF"] }
+```
+
+Inset borders can appear in individual window captures. Set `in_capture = true` in `[appearance.border]` to enable this by default, or set `border.in_capture = true` or `false` on a matching window rule. This defaults to false. It applies to solid and chalk insets, including fullscreen insets, and is independent of the output-wide border's capture setting.
+
+Each `border.chalk`, `chalk`, or `unfocused_chalk` table can override the shared chalk values. Output states accept `off`, `solid`, and `chalk`; use `color` for a solid output border. `in_capture` controls whether the output border appears in the capture. An alpha of `00` leaves the scene visible through that palette entry.
+
+`pixel_seconds_per_update` controls when dots switch on or off. `segment_seconds_per_update` controls when palette segments change. Both are measured to the nearest millisecond. The shared `seconds_per_update` setting supplies the default for either interval that is omitted. Coincident updates share one pattern generation and fade; otherwise each boundary updates its own component. A fade ends by the next scheduled boundary.
+
+Chalk generates a strip pattern at the update boundary and requests additional frames only during its fade. Use `fade_seconds = 0` for instant changes. The fade is capped to the update interval. Setting `always_flip_spacing = 0` disables the forced flip dots. `cell_px` is measured in buffer pixels.
