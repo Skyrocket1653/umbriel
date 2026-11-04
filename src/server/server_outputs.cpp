@@ -262,6 +262,13 @@ namespace umbriel {
     return nullptr;
   }
 
+  bool Server::outputFocused(const Output& output) const {
+    if (const Output* focused = focusedOutput()) {
+      return focused == &output;
+    }
+    return outputFromWlr(preferredOutput()) == &output;
+  }
+
   wlr_box Server::usableAreaAt(double lx, double ly) const {
     wlr_output* output = wlr_output_layout_output_at(m_outputLayout, lx, ly);
     if (output == nullptr) {
