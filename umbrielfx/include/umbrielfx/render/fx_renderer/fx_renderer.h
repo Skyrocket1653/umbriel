@@ -17,6 +17,7 @@ struct wlr_renderer* fx_renderer_create_with_drm_fd_gbm(int drm_fd);
 struct wlr_renderer* fx_renderer_create(struct wlr_backend* backend);
 
 struct fx_renderer* fx_get_renderer(struct wlr_renderer* wlr_renderer);
+bool fx_renderer_prepare_chalk_masks(struct wlr_renderer* renderer, int rows);
 
 bool fx_renderer_check_ext(struct wlr_renderer* renderer, const char* ext);
 /**

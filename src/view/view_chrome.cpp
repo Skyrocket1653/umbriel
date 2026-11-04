@@ -233,11 +233,18 @@ namespace umbriel {
     m_decoration.setBorderRawColors(inner, outer, opacity);
     if (m_ssdFrame != nullptr) {
       int inset = 0;
-      // Only opaque rings adjacent to the content can hide the title fill's overlap.
-      if (m_decoration.borderWidth() == 0 || inner[3] * opacity >= 1.0F) {
-        inset = m_decoration.borderWidth();
-        if (outer[3] * opacity >= 1.0F) {
-          inset += m_decoration.outerBorderWidth();
+      // Only visible, opaque outside rings can hide the title fill's overlap.
+      const auto* border = m_decoration.borderNode();
+      if (border != nullptr && border->node.enabled && m_decoration.bordersVisible()) {
+        if (border->draw_pattern != nullptr) {
+          if (m_chalkBorder && m_chalkBorder->opaque()) {
+            inset = m_decoration.borderWidth() + m_decoration.outerBorderWidth();
+          }
+        } else if (m_decoration.borderWidth() == 0 || inner[3] * opacity >= 1.0F) {
+          inset = m_decoration.borderWidth();
+          if (outer[3] * opacity >= 1.0F) {
+            inset += m_decoration.outerBorderWidth();
+          }
         }
       }
       m_ssdFrame->setOpaqueBorderInset(inset);
@@ -417,7 +424,141 @@ namespace umbriel {
   void View::updateBorderGeometry(int contentWidth, int contentHeight) {
     syncSsdFrame();
     m_decoration.updateBorderGeometry(contentWidth, contentHeight, titleBarHeight());
+    syncNativeBorder(contentWidth, contentHeight);
     layoutChromeAttachment(contentWidth, contentHeight);
+  }
+
+  void View::syncNativeBorder(int contentWidth, int contentHeight) {
+    const auto& rule = resolvedRules();
+    auto* outer = m_decoration.borderNode();
+    if (!rule.borderStyle && !rule.borderPlacement && m_insetBorder == nullptr && !m_chalkBorder) {
+      return;
+    }
+    const auto style = rule.borderStyle.value_or(BorderStyle::Solid);
+    const bool inset = rule.borderPlacement.value_or(BorderPlacement::Outside) == BorderPlacement::Inset;
+    const int borderWidth = rule.borderWidth.value_or(config().appearance.borderWidth);
+    const auto insetWidth = [borderWidth](int width, int height) {
+      return std::min(borderWidth, (std::min(width, height) - 1) / 2);
+    };
+    const bool canInset = m_mapped && inset && style != BorderStyle::Off;
+    const bool showInset = canInset && insetWidth(contentWidth, contentHeight) > 0;
+    if (showInset && m_insetBorder == nullptr && m_contentTree != nullptr) {
+      const float color[4]{};
+      m_insetBorder = wlr_scene_border_create(m_contentTree, color, color);
+    }
+    if (outer != nullptr) {
+      wlr_scene_node_set_enabled(&outer->node, !inset && style != BorderStyle::Off);
+    }
+    const bool chalk = m_mapped
+        && style == BorderStyle::Chalk
+        && (inset ? showInset && m_insetBorder != nullptr : outer != nullptr && decorated());
+    auto settings = config().appearance.border.chalk;
+    settings.overlay(rule.borderChalk);
+    bool changed = false;
+    if (chalk || m_chalkBorder) {
+      if (!m_chalkBorder) {
+        m_chalkBorder = std::make_unique<ChalkBorder>(wl_display_get_event_loop(m_server->display()), [this] {
+          auto* out = currentOutput();
+          if (!m_mapped || m_server->sessionLocked() || out == nullptr) {
+            return false;
+          }
+          const wlr_box box = out->layoutBox();
+          auto* outer = m_decoration.borderNode();
+          for (auto* node : {outer, m_insetBorder}) {
+            if (node != nullptr && node->draw_pattern != nullptr && wlr_scene_node_visible_in_box(&node->node, &box)) {
+              wlr_scene_border_damage(node);
+              return true;
+            }
+          }
+          return false;
+        });
+      }
+      changed = m_chalkBorder->configure(settings, chalk);
+      m_chalkBorder->setOpacity(effectiveOpacity());
+    }
+    if (outer != nullptr) {
+      wlr_scene_border_set_pattern(
+          outer, chalk && !inset ? ChalkBorder::draw : nullptr, chalk && !inset ? m_chalkBorder.get() : nullptr
+      );
+      if (changed && chalk && !inset) {
+        wlr_scene_border_damage(outer);
+      }
+    }
+    // The isolated capture clips to committed content even while the screen presents a different size.
+    const wlr_box captureContent = committedContentBox();
+    const bool captureInset = canInset
+        && m_captureScene != nullptr
+        && insetWidth(captureContent.width, captureContent.height) > 0
+        && m_server->viewCaptured(*this)
+        && rule.borderInCapture.value_or(config().appearance.border.inCapture);
+    if (captureInset && m_captureInsetBorder == nullptr) {
+      const float color[4]{};
+      m_captureInsetBorder = wlr_scene_border_create(&m_captureScene->tree, color, color);
+    }
+
+    const bool captureChalk = captureInset && m_captureInsetBorder != nullptr && style == BorderStyle::Chalk;
+    bool captureChanged = false;
+    if (captureChalk || m_captureChalkBorder) {
+      if (!m_captureChalkBorder) {
+        m_captureChalkBorder = std::make_unique<ChalkBorder>(wl_display_get_event_loop(m_server->display()), [this] {
+          if (!m_mapped
+              || m_server->sessionLocked()
+              || m_captureInsetBorder == nullptr
+              || !m_captureInsetBorder->node.enabled) {
+            return false;
+          }
+          wlr_scene_border_damage(m_captureInsetBorder);
+          return true;
+        });
+      }
+      captureChanged = m_captureChalkBorder->configure(std::move(settings), captureChalk);
+      if (captureChanged && captureChalk && m_chalkBorder) {
+        m_captureChalkBorder->inheritPhase(*m_chalkBorder);
+      }
+      m_captureChalkBorder->setOpacity(effectiveOpacity());
+    }
+
+    const auto updateInset = [&](wlr_scene_border* node, bool visible, ChalkBorder* pattern, bool dirty, int width,
+                                 int height) {
+      if (node == nullptr) {
+        return;
+      }
+      if (!visible) {
+        wlr_scene_node_set_enabled(&node->node, false);
+      }
+      wlr_scene_border_set_pattern(node, pattern != nullptr ? ChalkBorder::draw : nullptr, pattern);
+      if (!visible) {
+        return;
+      }
+
+      const int thickness = insetWidth(width, height);
+      const int radius = std::clamp(surfaceRadius(), 0, std::min(width, height) / 2);
+      const auto corners = corner_radii_all(radius);
+      wlr_scene_border_set_geometry(
+          node, width, height, thickness, 0,
+          {.area = {thickness, thickness, width - 2 * thickness, height - 2 * thickness},
+           .corners = corner_radii_all(std::max(0, radius - thickness)),
+           .inside = false},
+          corners, corners
+      );
+      wlr_scene_node_raise_to_top(&node->node);
+      const auto& colors = m_decoration.borderColors();
+      float color[4];
+      premultiplied(color, m_borderFocusedState ? colors.focused : colors.unfocused, effectiveOpacity());
+      wlr_scene_border_set_colors(node, color, color);
+      wlr_scene_node_set_enabled(&node->node, true);
+      if (dirty) {
+        wlr_scene_border_damage(node);
+      }
+    };
+    updateInset(
+        m_insetBorder, showInset, chalk && inset ? m_chalkBorder.get() : nullptr, changed, contentWidth, contentHeight
+    );
+    updateInset(
+        m_captureInsetBorder, captureInset, captureChalk ? m_captureChalkBorder.get() : nullptr, captureChanged,
+        captureContent.width, captureContent.height
+    );
+    applyBorderColors();
   }
 
   void View::setChromeAttachment(std::unique_ptr<ViewChromeAttachment> attachment) {

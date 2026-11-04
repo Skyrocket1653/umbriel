@@ -25,6 +25,10 @@ blur = true
 
 | Key                      | Default | Description                                                                                                                     |
 | ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `border.style`           | global  | Native border style: `"off"`, `"solid"`, or `"chalk"`; default `"solid"`.                                                       |
+| `border.placement`       | global  | Draw `"outside"` the window (default) or `"inset"`, including fullscreen windows. Insets use `border_width`.                    |
+| `border.in_capture`      | global  | Include inset borders in individual window captures; inherits `appearance.border.in_capture`, default `false`.                  |
+| `border.chalk`           | global  | A table overriding shared [`appearance.border.chalk`](appearance.md#native-chalk-borders) settings for this window.             |
 | `border_width`           | global  | Override `appearance.border_width`, 0 to 100.                                                                                   |
 | `outer_border_width`     | global  | Override `appearance.outer_border_width`, 0 to 100.                                                                             |
 | `border_color_focused`   | global  | Override `colors.border.focused`.                                                                                               |

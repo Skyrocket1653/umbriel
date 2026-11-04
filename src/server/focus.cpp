@@ -128,6 +128,9 @@ namespace umbriel {
     // window; the keyboard enter replays when it closes.
     const bool overviewActive = m_server.overview() != nullptr && m_server.overview()->active();
     if (LayerSurface* layer = exclusiveKeyboardLayer()) {
+      if (overviewActive) {
+        seatTarget->applySeatFocus(false, raise);
+      }
       layer->focus();
     } else {
       seatTarget->applySeatFocus(!overviewActive, raise);
@@ -302,7 +305,9 @@ namespace umbriel {
     if (LayerSurface* layer = LayerSurface::fromSurface(focusedSurface);
         layer != nullptr && layer->acceptsKeyboard() && outputIsUsable(layer->output())) {
       // Preserve an on-demand layer and any popup grab it currently owns.
-      m_server.deactivateViews(nullptr);
+      if (m_server.overview() == nullptr || !m_server.overview()->active()) {
+        m_server.deactivateViews(nullptr);
+      }
       m_server.refreshOutputPolicies();
       return true;
     }
@@ -318,7 +323,9 @@ namespace umbriel {
       if (focusedSurface != nullptr && focusedSurface->mapped && LayerSurface::fromSurface(focusedSurface) == layer) {
         // Infrastructure changes must not replace this layer's popup with its
         // root surface. Explicit interactions still call focus() directly.
-        m_server.deactivateViews(nullptr);
+        if (m_server.overview() == nullptr || !m_server.overview()->active()) {
+          m_server.deactivateViews(nullptr);
+        }
         m_server.refreshOutputPolicies();
         return;
       }
@@ -448,8 +455,10 @@ namespace umbriel {
     }
   }
 
-  void FocusManager::clearKeyboardFocus() {
-    deactivateViews(nullptr);
+  void FocusManager::clearKeyboardFocus(bool deactivate) {
+    if (deactivate) {
+      deactivateViews(nullptr);
+    }
     wlr_seat* seat = m_server.seat()->wlr();
     // Overview and other compositor-owned states must not leave an xdg popup
     // grab intercepting both this clear and the later focus restoration. Keep

@@ -22,6 +22,7 @@
 #include "lock/session_lock.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "scene/chalk_border.h"
 #include "scene/cheatsheet.h"
 #include "scene/color.h"
 #include "scene/config_banner.h"
@@ -736,6 +737,7 @@ namespace umbriel {
     if (m_renderer == nullptr) {
       throw std::runtime_error("failed to create fx_renderer");
     }
+    prepareChalkMasks(m_renderer, config());
     m_rendererLost.notify = onRendererLost;
     wl_signal_add(&m_renderer->events.lost, &m_rendererLost);
 

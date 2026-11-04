@@ -105,6 +105,8 @@ struct border_shader {
   GLint inner_width;
   GLint outer_width;
   GLint inner_color;
+  GLint chalk_enabled, chalk_masks, chalk_palette, chalk_mask_size, chalk_style;
+  GLint chalk_offsets, chalk_palette_size, chalk_current, chalk_previous, chalk_blend, chalk_decode;
 };
 
 bool link_border_program(struct border_shader* shader);

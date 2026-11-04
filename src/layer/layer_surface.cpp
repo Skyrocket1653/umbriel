@@ -327,8 +327,10 @@ namespace umbriel {
 
     wlr_seat* seat = m_server->seat()->wlr();
     wlr_surface* surface = m_layerSurface->surface;
-    // Layers take the seat: drop every window's activated/border so none stay "focused".
-    m_server->deactivateViews(nullptr);
+    // Overview chrome takes keyboard input without clearing the selected window's focus appearance.
+    if (m_server->overview() == nullptr || !m_server->overview()->active()) {
+      m_server->deactivateViews(nullptr);
+    }
     if (seat->keyboard_state.focused_surface == surface) {
       return;
     }
@@ -350,7 +352,9 @@ namespace umbriel {
       return;
     }
 
-    m_server->deactivateViews(nullptr);
+    if (m_server->overview() == nullptr || !m_server->overview()->active()) {
+      m_server->deactivateViews(nullptr);
+    }
     // focus() would end the popup's keyboard grab, and wlroots answers that by dismissing the popup. Enter past it.
     m_server->notifyKeyboardEnter(m_layerSurface->surface, Server::KeyboardGrab::Bypass);
     m_server->refreshOutputPolicies();

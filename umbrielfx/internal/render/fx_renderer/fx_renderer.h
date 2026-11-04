@@ -219,6 +219,8 @@ struct fx_renderer {
 
   struct wlr_drm_format_set shm_texture_formats;
 
+  GLuint chalk_masks;
+  int chalk_mask_rows;
   bool is_gles3;
   bool nvidia_sync_workaround;
 
