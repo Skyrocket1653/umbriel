@@ -18,6 +18,7 @@ namespace umbriel {
     ~ChalkBorder();
 
     void setOpacity(float opacity);
+    void inheritPhase(const ChalkBorder& source);
     bool configure(ChalkSettings settings, bool enabled);
     static bool draw(
         void* data, fx_gles_render_pass* pass, wlr_renderer* renderer, const wlr_scene_border_pattern* border

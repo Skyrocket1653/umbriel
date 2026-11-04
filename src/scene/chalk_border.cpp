@@ -241,6 +241,13 @@ namespace umbriel {
 
   void ChalkBorder::setOpacity(float opacity) { m_state->opacity = opacity; }
 
+  void ChalkBorder::inheritPhase(const ChalkBorder& source) {
+    m_state->epoch = source.m_state->epoch;
+    m_state->randomSeed = source.m_state->randomSeed;
+    m_state->generatedTick = -1;
+  }
+
+
   bool ChalkBorder::configure(ChalkSettings settings, bool enabled) {
     auto& state = *m_state;
     if (state.enabled == enabled && state.settings == settings) return false;
