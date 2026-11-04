@@ -644,6 +644,7 @@ namespace umbriel {
 
   WindowRuleState View::ruleState() const {
     return {
+        .xwayland = xwayland(),
         .focused = m_borderFocusedState,
         .floating = !m_tiled,
         .fullscreen = scheduledFullscreen(),

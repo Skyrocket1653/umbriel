@@ -157,6 +157,10 @@ namespace umbriel {
     bool confinePointer();
     double touchpadScrollFactor();
     bool allowsShortcutsInhibit();
+    // Effective X11-only compatibility rule; does not change compositor focus or input delivery.
+    bool preservesXwaylandFocus();
+    // Restore a game's saved locked-pointer baseline on re-entry, independently of X11 activation retention.
+    bool restoresXwaylandPointer();
     // A `background_render` rule applies: while hidden, the window stays unsuspended and gets frame callbacks at its
     // output's refresh rate.
     bool backgroundRender() const { return m_backgroundRender; }
@@ -521,6 +525,7 @@ namespace umbriel {
     friend class XwaylandWindow;
 
     bool canUseRegionGeometry() const;
+    bool defersXwaylandActivation() const;
 
     // Move the frame, and a lent shadow with it.
     void setScenePosition(int x, int y);
@@ -548,7 +553,7 @@ namespace umbriel {
     // X11 windows are positioned by the compositor: the X server must know where the window is on screen, because
     // override-redirect menus place themselves relative to it. Deduplicated, so animation frames cost nothing.
     void sendXwaylandConfigure(int width, int height);
-    void syncXwaylandConfigure();
+    void syncXwaylandConfigure(bool force = false);
     // How the X11 window's output maps into X coordinates.
     XwaylandRegion xwaylandRegion() const;
     // Draws the X11 window's surface at `scale` X pixels per layout unit.
@@ -947,7 +952,17 @@ namespace umbriel {
       int y = INT_MIN;
       int width = 0;
       int height = 0;
+      bool fullscreen = false;
     } m_xConfigured;
+    // An opted-in game resumes its last locked, surface-local pointer baseline, not a desktop coordinate.
+    struct XwaylandPointerResume {
+      double x = 0;
+      double y = 0;
+      bool pending = true;
+      // The surface-local position is installed, but an X11-to-X11 handoff may still be recreating its lock.
+      bool prepared = false;
+    };
+    std::optional<XwaylandPointerResume> m_xwaylandPointerResume;
     double m_xScale = 1.0;
     // The size the compositor wants an X11 window at (0 = the client's own), the counterpart of xdg's scheduled size.
     ClientSize m_xScheduled;

@@ -857,10 +857,21 @@ namespace umbriel {
 
     wlr_seat* seat = m_server->seat()->wlr();
     wlr_surface* surface = rootSurface();
-    // Always clear other views first: the previous seat surface may be a layer, so
-    // deactivating only that surface can leave another window's focus border on.
+    // Restore before deactivating or raising any X11 surface. Deactivating an ordinary outgoing X11 window can set
+    // core focus to PointerRoot: the game may then receive FocusIn at the old pointer position before its explicit
+    // activation below. The old X11 owner must remain focused until the saved baseline has been installed.
+    if (withKeyboard
+        && seat->keyboard_state.focused_surface != surface
+        && restoresXwaylandPointer()
+        && m_xwaylandPointerResume.has_value()) {
+      if (seat->drag == nullptr && wlr_seat_keyboard_has_grab(seat)) {
+        wlr_seat_keyboard_end_grab(seat);
+      }
+      m_server->cursor()->prepareXwaylandPointerRestore(*this);
+    }
+    // Clear other views after pointer restoration: the previous seat surface can be a layer, so deactivating only
+    // that surface would leave another window's focus chrome on.
     m_server->deactivateViews(this);
-
     if (raise) {
       raiseToTop();
     }
@@ -892,6 +903,7 @@ namespace umbriel {
       wlr_seat_keyboard_end_grab(seat);
     }
     m_server->notifyKeyboardEnter(surface);
+    m_server->cursor()->finishXwaylandPointerRestore(*this);
   }
 
   void View::scheduleFrame() {
