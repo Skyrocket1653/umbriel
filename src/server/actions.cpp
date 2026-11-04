@@ -1189,7 +1189,7 @@ namespace umbriel {
     bool actionConsumeOrExpel(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
         const FocusedMove move = beginFocusedMove(server);
-        const bool changed = workspace->expelFocused(Direction) || workspace->consumeFocused(Direction);
+        const bool changed = workspace->consumeOrExpelFocused(Direction);
         invalidateHoverFocusAfterSceneChange(server, changed);
         finishFocusedMove(server, move);
       }
