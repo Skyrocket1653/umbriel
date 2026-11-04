@@ -427,7 +427,9 @@ namespace umbriel {
       const Workspace* workspace = group != nullptr ? group->active() : nullptr;
       focused = workspace != nullptr ? workspace->focusedView() : nullptr;
     }
-    if (focused != nullptr
+    // Fullscreen content is a card while the overview is interactive; it no longer covers the corners.
+    if (!overviewOpen
+        && focused != nullptr
         && focused->mapped()
         && focused->onActiveWorkspace()
         && focused->currentOutput() == umbrielOutput
