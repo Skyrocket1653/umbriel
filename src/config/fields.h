@@ -21,6 +21,8 @@
 #include <vector>
 
 namespace umbriel {
+  const registry::Fields<ChalkSettings>& chalkFields();
+  const registry::Choices<BorderStyle>& borderStyles();
 
   // A selector recorded while parsing and checked once every table is read, so forward and cross-include references
   // resolve.

@@ -218,8 +218,18 @@ namespace umbriel {
           integer("width", 1, 100000, &W::defaultFloatingWidthPx),
           integer("height", 1, 100000, &W::defaultFloatingHeightPx),
       };
+      static const registry::Fields<W> border{
+          registry::choice("style", &W::borderStyle, borderStyles()),
+          registry::choice(
+              "placement", &W::borderPlacement,
+              {{"outside", BorderPlacement::Outside}, {"inset", BorderPlacement::Inset}}
+          ),
+          boolean("in_capture", &W::borderInCapture),
+          registry::table("chalk", &W::borderChalk, chalkFields()),
+      };
       static const registry::Fields<W> fields{
           registry::table<W>("match", self, match, rejectUnlessTable<W>),
+          registry::table<W>("border", self, border),
           boolean("default_floating", &W::defaultFloating),
           boolean("default_fullscreen", &W::defaultFullscreen),
           boolean("default_maximize_to_edges", &W::defaultMaximizeToEdges),
