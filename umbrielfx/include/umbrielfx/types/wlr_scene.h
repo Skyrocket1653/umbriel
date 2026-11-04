@@ -203,11 +203,26 @@ struct wlr_scene_rect {
   struct clipped_region clipped_region;
 };
 
+struct fx_gles_render_pass;
+struct wlr_scene_border_pattern {
+  struct wlr_box box;
+  const pixman_region32_t* clip;
+  struct wlr_box hole;
+  float inner_radii[4], outer_radii[4];
+  float thickness;
+};
+typedef bool (*wlr_scene_border_draw_func)(
+    void* data, struct fx_gles_render_pass* pass, struct wlr_renderer* renderer,
+    const struct wlr_scene_border_pattern* options
+);
+
 /** A scene-graph node displaying a two-color rounded border in one pass */
 struct wlr_scene_border {
   struct wlr_scene_node node;
   int width, height;
   int inner_width, outer_width;
+  wlr_scene_border_draw_func draw_pattern;
+  void* pattern_data;
   float inner_color[4];
   float outer_color[4];
   struct clipped_region clipped_region;
@@ -355,6 +370,11 @@ struct wlr_scene_buffer {
 
 /** A viewport for an output in the scene-graph */
 struct wlr_scene_output {
+  wlr_scene_border_draw_func draw_inner_border;
+  void* inner_border_data;
+  int inner_border_width;
+  float inner_border_color[4];
+  bool inner_border_in_capture;
   struct wlr_output* output;
   struct wl_list link; // wlr_scene.outputs
   struct wlr_scene* scene;
@@ -801,6 +821,18 @@ void wlr_scene_border_set_geometry(
     struct wlr_scene_border* border, int width, int height, int inner_width, int outer_width,
     struct clipped_region clipped_region, struct fx_corner_radii seam_corners, struct fx_corner_radii outer_corners
 );
+
+void wlr_scene_border_set_pattern(struct wlr_scene_border* border, wlr_scene_border_draw_func draw, void* data);
+void wlr_scene_border_damage(struct wlr_scene_border* border);
+void wlr_scene_output_set_inner_border(
+    struct wlr_scene_output* output, wlr_scene_border_draw_func draw, void* data, int width, bool in_capture,
+    const float color[4]
+);
+void wlr_scene_border_draw_strip(
+    struct fx_gles_render_pass* pass, struct wlr_texture* texture, const struct wlr_box* box,
+    const pixman_region32_t* clip, float opacity, int pair_axis, double blend
+);
+void wlr_scene_output_damage_inner_border(struct wlr_scene_output* output);
 
 void wlr_scene_border_set_colors(
     struct wlr_scene_border* border, const float inner_color[4], const float outer_color[4]

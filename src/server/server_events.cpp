@@ -1531,7 +1531,13 @@ namespace umbriel {
     resolveOutputEffect(*target);
     if (target->screenEffectSlot().effectiveName() != before) {
       kLog.debug("{} screen effect '{}' -> '{}'", output->name, before, target->screenEffectSlot().effectiveName());
-      target->applyOutputEffects();
+    }
+    target->applyOutputEffects();
+  }
+
+  void Server::refreshScreenBorders() {
+    for (const auto& output : m_outputs) {
+      output->applyScreenBorder();
     }
   }
 
@@ -2296,6 +2302,8 @@ namespace umbriel {
     Server* self;
     self = wl_container_of(listener, self, m_layerKeyboardFocusChange);
     self->scheduleIpcLayersEvent();
+    // Native screen borders can use different palettes on unfocused outputs.
+    self->refreshScreenBorders();
   }
 
   void Server::addPointer(wlr_input_device* device) {
@@ -3664,6 +3672,15 @@ namespace umbriel {
       }
     }
     wlr_seat_keyboard_notify_clear_focus(seat);
+  }
+
+  void Server::clearClientInputPreservingActivation() {
+    // Keep this order shared with overview: keyboard leave, pointer leave, then constraint deactivation.
+    // In particular, do not apply a locked-pointer cursor hint after entering the incoming client.
+    clearKeyboardFocus(false);
+    m_cursor->clearPointerFocus();
+    m_cursor->clearConstraint();
+    wlr_seat_pointer_notify_frame(m_seat->wlr());
   }
 
   void Server::rememberKeyboardInputSource(Keyboard& keyboard) {

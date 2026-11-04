@@ -328,22 +328,72 @@ namespace umbriel {
     const int innerWidth = scaledWidth(borderWidth);
     const int outerWidth = scaledWidth(outerBorderWidth);
     const int surfaceRadius = nestedRadius(outerRadius, innerWidth + outerWidth);
-    const bool borderVisible = decorated && innerWidth + outerWidth > 0;
+    const auto& rule = view->resolvedRules();
+    const auto style = rule.borderStyle.value_or(BorderStyle::Solid);
+    const bool inset = rule.borderPlacement == BorderPlacement::Inset;
+    const int insetWidth = std::min(
+        scaledWidth(rule.borderWidth.value_or(config().appearance.borderWidth)), (std::min(contentW, contentH) - 1) / 2
+    );
+    const bool borderVisible =
+        style != BorderStyle::Off && (inset ? insetWidth > 0 : decorated && innerWidth + outerWidth > 0);
     wlr_scene_node_set_enabled(&card.border->node, borderVisible);
+    const bool chalk = borderVisible && style == BorderStyle::Chalk;
+    if (chalk || card.chalkBorder) {
+      const bool created = !card.chalkBorder;
+      if (created) {
+        card.chalkBorder = std::make_unique<ChalkBorder>(wl_display_get_event_loop(m_server->display()), [&card] {
+          if (card.border == nullptr || card.owner == nullptr || card.owner->output == nullptr) {
+            return false;
+          }
+          const wlr_box outputBox = card.owner->output->layoutBox();
+          if (!wlr_scene_node_visible_in_box(&card.border->node, &outputBox)) {
+            return false;
+          }
+          wlr_scene_border_damage(card.border);
+          return true;
+        });
+      }
+      auto settings = config().appearance.border.chalk;
+      settings.overlay(rule.borderChalk);
+      const bool changed = card.chalkBorder->configure(std::move(settings), chalk);
+      if (created && view->m_chalkBorder) {
+        card.chalkBorder->inheritPhase(*view->m_chalkBorder);
+      }
+      card.chalkBorder->setOpacity(presentedOpacity);
+      wlr_scene_border_set_pattern(
+          card.border, chalk ? ChalkBorder::draw : nullptr, chalk ? card.chalkBorder.get() : nullptr
+      );
+      if (changed && chalk) {
+        wlr_scene_border_damage(card.border);
+      }
+    }
     if (borderVisible) {
-      card.borderPadding = scaledWidth(view->borderEffectPadding());
-      applyBorderGeometry(
-          card.border,
-          makeBorderRing(
-              contentW, contentH + static_cast<int>(std::lround(view->titleBarHeight() * z)), outerRadius, innerWidth,
-              outerWidth, card.borderPadding
-          ),
-          innerWidth, outerWidth
-      );
-      wlr_scene_node_set_position(
-          &card.border->node, card.border->node.x,
-          card.border->node.y - static_cast<int>(std::lround(view->titleBarHeight() * z))
-      );
+      if (inset) {
+        card.borderPadding = 0;
+        const auto corners = corner_radii_all(surfaceRadius);
+        wlr_scene_node_set_position(&card.border->node, 0, 0);
+        wlr_scene_border_set_geometry(
+            card.border, contentW, contentH, insetWidth, 0,
+            {.area = {insetWidth, insetWidth, contentW - 2 * insetWidth, contentH - 2 * insetWidth},
+             .corners = corner_radii_all(std::max(0, surfaceRadius - insetWidth)),
+             .inside = false},
+            corners, corners
+        );
+      } else {
+        card.borderPadding = scaledWidth(view->borderEffectPadding());
+        applyBorderGeometry(
+            card.border,
+            makeBorderRing(
+                contentW, contentH + static_cast<int>(std::lround(view->titleBarHeight() * z)), outerRadius, innerWidth,
+                outerWidth, card.borderPadding
+            ),
+            innerWidth, outerWidth
+        );
+        wlr_scene_node_set_position(
+            &card.border->node, card.border->node.x,
+            card.border->node.y - static_cast<int>(std::lround(view->titleBarHeight() * z))
+        );
+      }
       const std::array<float, 4> innerColor = tint(cardBorderColor(card, liveTarget), presentedOpacity);
       const std::array<float, 4> outerColor = tint(view->borderColors().outer, presentedOpacity);
       wlr_scene_border_set_colors(card.border, innerColor.data(), outerColor.data());
@@ -1355,6 +1405,7 @@ namespace umbriel {
       card->surfaceTree = nullptr;
     }
     card->border = nullptr;
+    card->chalkBorder.reset();
     m_server->scheduleSuspensionSync();
   }
 
@@ -1800,10 +1851,9 @@ namespace umbriel {
       wlr_scene_node_set_enabled(&m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)->node, false);
     }
 
-    m_server->clearKeyboardFocus();
+    // Overview owns keyboard input, but the selected window retains activation, focus rules and chrome.
+    m_server->clearClientInputPreservingActivation();
     activateLiveTarget();
-    m_server->cursor()->clearPointerFocus();
-    m_server->cursor()->clearConstraint();
 
     applyProgress();
     wlr_scene_node_set_enabled(&m_server->overviewBlurTree()->node, true);

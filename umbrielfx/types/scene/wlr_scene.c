@@ -2160,6 +2160,90 @@ void wlr_scene_border_set_geometry(
   scene_node_update(&border->node, NULL);
 }
 
+void wlr_scene_border_draw_strip(
+    struct fx_gles_render_pass* pass, struct wlr_texture* texture, const struct wlr_box* box,
+    const pixman_region32_t* clip, float opacity, int pair_axis, double blend
+) {
+  const struct wlr_fbox source = {
+      .x = pair_axis == 1 ? blend - 0.5 : 0,
+      .y = pair_axis == 2 ? blend - 0.5 : 0,
+      .width = texture->width,
+      .height = texture->height,
+  };
+  fx_render_pass_add_texture(
+      pass,
+      &(struct fx_render_texture_options){
+          .base = {
+              .texture = texture,
+              .src_box = source,
+              .dst_box = *box,
+              .clip = clip,
+              .alpha = &opacity,
+              .filter_mode = pair_axis ? WLR_SCALE_FILTER_BILINEAR : WLR_SCALE_FILTER_NEAREST,
+              .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED
+          },
+      }
+  );
+}
+
+static bool render_border_pattern(
+    wlr_scene_border_draw_func draw, void* data, struct fx_gles_render_pass* pass, struct wlr_renderer* renderer,
+    const struct fx_render_border_options* options
+) {
+  if (draw == NULL) {
+    return false;
+  }
+  const struct fx_corner_fradii inner = options->clipped_region.corners;
+  const struct fx_corner_fradii outer = options->outer_corners;
+  const struct wlr_scene_border_pattern pattern = {
+      .box = options->box,
+      .clip = options->clip,
+      .hole = options->clipped_region.area,
+      .inner_radii = {inner.top_left, inner.top_right, inner.bottom_left, inner.bottom_right},
+      .outer_radii = {outer.top_left, outer.top_right, outer.bottom_left, outer.bottom_right},
+      .thickness = options->inner_width + options->outer_width,
+  };
+  return draw(data, pass, renderer, &pattern);
+}
+
+void wlr_scene_border_damage(struct wlr_scene_border* border) {
+  int x, y;
+  if (!wlr_scene_node_coords(&border->node, &x, &y)) {
+    return;
+  }
+  const struct wlr_box* hole = &border->clipped_region.area;
+  const struct fx_corner_radii* corners = &border->clipped_region.corners;
+  const int inset =
+      fmaxf(fmaxf(corners->top_left, corners->top_right), fmaxf(corners->bottom_left, corners->bottom_right)) + 1;
+  pixman_region32_t region;
+  pixman_region32_init_rect(&region, x, y, border->width, border->height);
+  if (hole->width > 2 * inset && hole->height > 2 * inset) {
+    pixman_region32_t center;
+    pixman_region32_init_rect(
+        &center, x + hole->x + inset, y + hole->y + inset, hole->width - 2 * inset, hole->height - 2 * inset
+    );
+    pixman_region32_subtract(&region, &region, &center);
+    pixman_region32_fini(&center);
+  }
+  pixman_region32_t visible;
+  pixman_region32_init(&visible);
+  scene_node_visibility(&border->node, &visible);
+  pixman_region32_intersect(&region, &region, &visible);
+  pixman_region32_fini(&visible);
+  scene_node_note_update(&border->node);
+  scene_damage_outputs(scene_node_get_root(&border->node), &region);
+  pixman_region32_fini(&region);
+}
+
+void wlr_scene_border_set_pattern(struct wlr_scene_border* border, wlr_scene_border_draw_func draw, void* data) {
+  if (border->draw_pattern == draw && border->pattern_data == data) {
+    return;
+  }
+  border->draw_pattern = draw;
+  border->pattern_data = data;
+  scene_node_update(&border->node, NULL);
+}
+
 void wlr_scene_border_set_colors(
     struct wlr_scene_border* border, const float inner_color[static 4], const float outer_color[static 4]
 ) {
@@ -3564,35 +3648,38 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     fx_corner_radii_transform(node_transform, &border_seam_corners);
     fx_corner_radii_transform(node_transform, &border_outer_corners);
 
-    fx_render_pass_add_border(
-        fx_pass,
-        &(struct fx_render_border_options){
-            .box = dst_box,
-            .clip = &render_region,
-            .clipped_region =
-                {
-                    .area = border_clipped_region_box,
-                    .corners = fx_corner_radii_scale(border_clipped_corners, data->scale),
-                },
-            .seam_corners = fx_corner_radii_scale(border_seam_corners, data->scale),
-            .outer_corners = fx_corner_radii_scale(border_outer_corners, data->scale),
-            .inner_width = scene_border->inner_width * data->scale,
-            .outer_width = scene_border->outer_width * data->scale,
-            .inner_color =
-                {
-                    .r = scene_border->inner_color[0],
-                    .g = scene_border->inner_color[1],
-                    .b = scene_border->inner_color[2],
-                    .a = scene_border->inner_color[3],
-                },
-            .outer_color = {
-                .r = scene_border->outer_color[0],
-                .g = scene_border->outer_color[1],
-                .b = scene_border->outer_color[2],
-                .a = scene_border->outer_color[3],
+    const struct fx_render_border_options border_options = {
+        .box = dst_box,
+        .clip = &render_region,
+        .clipped_region =
+            {
+                .area = border_clipped_region_box,
+                .corners = fx_corner_radii_scale(border_clipped_corners, data->scale),
             },
-        }
-    );
+        .seam_corners = fx_corner_radii_scale(border_seam_corners, data->scale),
+        .outer_corners = fx_corner_radii_scale(border_outer_corners, data->scale),
+        .inner_width = scene_border->inner_width * data->scale,
+        .outer_width = scene_border->outer_width * data->scale,
+        .inner_color =
+            {
+                .r = scene_border->inner_color[0],
+                .g = scene_border->inner_color[1],
+                .b = scene_border->inner_color[2],
+                .a = scene_border->inner_color[3],
+            },
+        .outer_color = {
+            .r = scene_border->outer_color[0],
+            .g = scene_border->outer_color[1],
+            .b = scene_border->outer_color[2],
+            .a = scene_border->outer_color[3],
+        },
+    };
+    if (!render_border_pattern(
+            scene_border->draw_pattern, scene_border->pattern_data, fx_pass, data->output->output->renderer,
+            &border_options
+        )) {
+      fx_render_pass_add_border(fx_pass, &border_options);
+    }
     break;
   case WLR_SCENE_NODE_BUFFER:;
     struct wlr_scene_buffer* scene_buffer = wlr_scene_buffer_from_node(node);
@@ -5037,13 +5124,41 @@ static void render_output_effect(
 
 // The screen slot, then the cursor slot over its result.
 static void render_output_effects(struct scene_output_effects* effects, const struct render_data* data) {
-  if (effects == NULL || (data->effect_capture && !data->include_capture_effects)) {
+  const bool effects_visible = effects != NULL && (!data->effect_capture || data->include_capture_effects);
+  const struct wlr_box whole = {.width = data->logical.width, .height = data->logical.height};
+  if (effects_visible) {
+    render_output_effect(
+        effects->screen, &effects->screen_parameters, &effects->screen_history, &whole, NULL, NULL, data
+    );
+  }
+  struct wlr_scene_output* output = data->output;
+  if (output->inner_border_width > 0 && (!data->effect_capture || output->inner_border_in_capture)) {
+    struct wlr_box box = whole;
+    transform_output_box(&box, data);
+    const int width =
+        fminf(roundf(output->inner_border_width * data->scale), (fminf(box.width, box.height) - 1.0f) / 2.0f);
+    if (width > 0) {
+      const struct fx_render_border_options border = {
+          .box = box,
+          .clip = &data->damage,
+          .clipped_region = {.area = {box.x + width, box.y + width, box.width - 2 * width, box.height - 2 * width}},
+          .inner_width = width,
+          .inner_color = {
+              output->inner_border_color[0], output->inner_border_color[1], output->inner_border_color[2],
+              output->inner_border_color[3]
+          },
+      };
+      struct fx_gles_render_pass* pass = fx_get_render_pass(data->render_pass);
+      if (!render_border_pattern(
+              output->draw_inner_border, output->inner_border_data, pass, output->output->renderer, &border
+          )) {
+        fx_render_pass_add_border(pass, &border);
+      }
+    }
+  }
+  if (!effects_visible) {
     return;
   }
-  const struct wlr_box whole = {.width = data->logical.width, .height = data->logical.height};
-  render_output_effect(
-      effects->screen, &effects->screen_parameters, &effects->screen_history, &whole, NULL, NULL, data
-  );
   if (effects->cursor == NULL || !effects->pointer_visible) {
     return;
   }
@@ -5168,6 +5283,47 @@ void wlr_scene_output_damage_box(struct wlr_scene_output* scene_output, const st
   pixman_region32_init_rect(&damage, box->x, box->y, box->width, box->height);
   scene_output_damage_output_space(scene_output, &damage);
   pixman_region32_fini(&damage);
+}
+
+void wlr_scene_output_damage_inner_border(struct wlr_scene_output* output) {
+  int width, height;
+  wlr_output_transformed_resolution(output->output, &width, &height);
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+  const int inset = fminf(ceilf(output->inner_border_width * output->output->scale), fminf(width, height) / 2);
+  if (inset <= 0) {
+    return;
+  }
+  const struct wlr_box edges[] = {
+      {0, 0, width, inset},
+      {0, height - inset, width, inset},
+      {0, inset, inset, height - 2 * inset},
+      {width - inset, inset, inset, height - 2 * inset},
+  };
+  for (size_t i = 0; i < sizeof(edges) / sizeof(edges[0]); ++i) {
+    wlr_scene_output_damage_box(output, &edges[i]);
+  }
+}
+
+void wlr_scene_output_set_inner_border(
+    struct wlr_scene_output* output, wlr_scene_border_draw_func draw, void* data, int width, bool in_capture,
+    const float color[4]
+) {
+  if (output->draw_inner_border == draw
+      && output->inner_border_data == data
+      && output->inner_border_width == width
+      && output->inner_border_in_capture == in_capture
+      && memcmp(output->inner_border_color, color, sizeof(output->inner_border_color)) == 0) {
+    return;
+  }
+  wlr_scene_output_damage_inner_border(output);
+  output->draw_inner_border = draw;
+  output->inner_border_data = data;
+  output->inner_border_width = width;
+  output->inner_border_in_capture = in_capture;
+  memcpy(output->inner_border_color, color, sizeof(output->inner_border_color));
+  wlr_scene_output_damage_inner_border(output);
 }
 
 static void scene_output_handle_needs_frame(struct wl_listener* listener, void* data) {
@@ -5430,7 +5586,8 @@ static bool scene_node_invisible(struct wlr_scene_node* node) {
     return rect->color[3] == 0.f;
   } else if (node->type == WLR_SCENE_NODE_BORDER) {
     struct wlr_scene_border* border = wlr_scene_border_from_node(node);
-    return (border->inner_width <= 0 || border->inner_color[3] == 0.f)
+    return border->draw_pattern == NULL
+        && (border->inner_width <= 0 || border->inner_color[3] == 0.f)
         && (border->outer_width <= 0 || border->outer_color[3] == 0.f);
   } else if (node->type == WLR_SCENE_NODE_BUFFER) {
     struct wlr_scene_buffer* buffer = wlr_scene_buffer_from_node(node);
@@ -6605,9 +6762,10 @@ static bool scene_output_build_state(
 
   bool capture_unavailable = capture_exclusion && scene_output->scene->capture_policy_failed;
   render_data.capture_exclusion = capture_exclusion;
-  bool unfiltered_pass = !capture_unavailable
-      && (capture_exclusion
-          || (capture_pending && in_place_visible && (output_effects == NULL || !output_effects->in_capture)));
+  const bool display_only_border = scene_output->inner_border_width > 0 && !scene_output->inner_border_in_capture;
+  const bool display_only_effects = in_place_visible && (output_effects == NULL || !output_effects->in_capture);
+  bool unfiltered_pass =
+      !capture_unavailable && (capture_exclusion || (capture_pending && (display_only_effects || display_only_border)));
   if (unfiltered_pass && output_effects == NULL) {
     output_effects = scene_output_effects_get(scene_output, true);
     unfiltered_pass = output_effects != NULL;
@@ -6690,7 +6848,7 @@ static bool scene_output_build_state(
     scanout_status = WLR_SCENE_DIRECT_SCANOUT_COLOR;
   } else if (list_len == 0) {
     scanout_status = WLR_SCENE_DIRECT_SCANOUT_NO_CANDIDATE;
-  } else if (list_len > 1) {
+  } else if (list_len > 1 || scene_output->inner_border_width > 0) {
     scanout_status = WLR_SCENE_DIRECT_SCANOUT_COMPOSITED;
   } else if (debug_damage == WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
     scanout_status = WLR_SCENE_DIRECT_SCANOUT_DEBUG_DAMAGE;
