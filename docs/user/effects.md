@@ -73,6 +73,19 @@ border_effect_unfocused = true
 
 A window rule's `border_effect_unfocused` accepts `true` or `false` and overrides `[effects].border_unfocused`. Omission inherits the global setting; the last matching rule that sets it wins. It controls whether the selected effect can draw without focus, including on overview cards. Use `border_effect` to select a different preset and `match.is_focused` to select it by focus state. Decoration, urgency, and fullscreen restrictions still apply.
 
+To apply a window effect only while fullscreen, include the preset and match the live fullscreen state:
+
+```toml
+[include]
+files = ["/usr/share/umbriel/effects/window/scanlines/effect.toml"]
+
+[[window_rule]]
+match.is_fullscreen = true
+window_effect = "scanlines"
+```
+
+Append the include path to an existing `[include].files` list. The rule applies to both Wayland and Xwayland windows and refreshes when fullscreen is entered or exited. Leaving fullscreen restores the selection from other matching rules or `[effects].window`. Add `match.app_id` to restrict the rule to one application. `match.is_fullscreen = false` selects non-fullscreen windows; maximizing to the output edges does not count as fullscreen.
+
 ## Settings
 
 `[effects]`:

@@ -294,6 +294,9 @@ namespace umbriel {
       if (rule.matchMaximized && *rule.matchMaximized != state.maximized) {
         continue;
       }
+      if (rule.matchFullscreen && *rule.matchFullscreen != state.fullscreen) {
+        continue;
+      }
       if (rule.matchMaximizedToEdges && *rule.matchMaximizedToEdges != state.maximizedToEdges) {
         continue;
       }

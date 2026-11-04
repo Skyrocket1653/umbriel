@@ -419,6 +419,7 @@ namespace umbriel {
     bool focused = false;
     bool floating = false;
     bool maximized = false;
+    bool fullscreen = false;
     bool maximizedToEdges = false;
     bool pinned = false;
     bool scratchpad = false;
@@ -464,6 +465,7 @@ namespace umbriel {
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
     std::optional<bool> matchMaximized;
+    std::optional<bool> matchFullscreen;
     std::optional<bool> matchMaximizedToEdges;
     std::optional<bool> matchPinned;
     std::optional<bool> matchScratchpad;
@@ -543,6 +545,7 @@ namespace umbriel {
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
           && matchMaximized == other.matchMaximized
+          && matchFullscreen == other.matchFullscreen
           && matchMaximizedToEdges == other.matchMaximizedToEdges
           && matchPinned == other.matchPinned
           && matchScratchpad == other.matchScratchpad
