@@ -427,7 +427,9 @@ namespace umbriel {
       const Workspace* workspace = group != nullptr ? group->active() : nullptr;
       focused = workspace != nullptr ? workspace->focusedView() : nullptr;
     }
-    if (focused != nullptr
+    // Fullscreen content is a card while the overview is interactive; it no longer covers the corners.
+    if (!overviewOpen
+        && focused != nullptr
         && focused->mapped()
         && focused->onActiveWorkspace()
         && focused->currentOutput() == umbrielOutput
@@ -1311,6 +1313,9 @@ namespace umbriel {
   void Cursor::warpToPreservingFocus(double lx, double ly) { warpTo(lx, ly, false); }
 
   bool Cursor::warpToView(View& view) {
+    if (syncRestoredXwaylandPointer()) {
+      return true;
+    }
     Output* output = view.currentOutput();
     if (output == nullptr) {
       return false;
@@ -1491,13 +1496,19 @@ namespace umbriel {
       }
     }
 
-    wlr_relative_pointer_manager_v1_send_relative_motion(
-        m_server->relativePointerManager(), m_server->seat()->wlr(), static_cast<uint64_t>(event->time_msec) * 1000,
-        event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy
-    );
-
+    if (m_server->physicalInputDevice(&event->pointer->base) && (event->delta_x != 0 || event->delta_y != 0)) {
+      cancelUnclaimedXwaylandPointerRestore();
+    }
     if (m_activeConstraint != nullptr && !constraintSurfaceActive()) {
       clearConstraint();
+    }
+    // A retained X activation is not permission to receive mouse deltas. This also covers an old implicit
+    // button grab, whose releases still need to reach the original surface after keyboard focus moves.
+    if (pointerInputAllowed(m_server->seat()->wlr()->pointer_state.focused_surface)) {
+      wlr_relative_pointer_manager_v1_send_relative_motion(
+          m_server->relativePointerManager(), m_server->seat()->wlr(), static_cast<uint64_t>(event->time_msec) * 1000,
+          event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy
+      );
     }
     if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
       return;
@@ -1523,6 +1534,9 @@ namespace umbriel {
     auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
     noteActivity();
     m_server->notifyInputActivity();
+    if (m_server->physicalInputDevice(&event->pointer->base)) {
+      cancelUnclaimedXwaylandPointerRestore();
+    }
     if (m_activeConstraint != nullptr && !constraintSurfaceActive()) {
       clearConstraint();
     }
@@ -1637,6 +1651,9 @@ namespace umbriel {
       m_clientPointerPress.reset();
     }
     noteActivity();
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+      cancelUnclaimedXwaylandPointerRestore();
+    }
     if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
       m_server->notifyInputActivity();
     } else {
@@ -1989,9 +2006,28 @@ namespace umbriel {
       return;
     }
 
+    // A compatibility handoff clears the outgoing pointer focus. Do it before entering the click target and
+    // delivering its press, otherwise that clear can discard the incoming X11 window's implicit button grab.
+    wlr_seat* seat = m_server->seat()->wlr();
+    View* previous = View::fromSurface(seat->keyboard_state.focused_surface);
+    const bool outgoingCompatibility =
+        previous != nullptr && (previous->preservesXwaylandFocus() || previous->restoresXwaylandPointer());
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED && outgoingCompatibility) {
+      // A layer or popup can take pointer input before its keyboard handoff. Capture the game's baseline while its
+      // pointer still owns the seat, even on those paths.
+      rememberLockedXwaylandPointer();
+    }
+    const bool focusBeforeButton = state == WL_POINTER_BUTTON_STATE_PRESSED
+        && view != nullptr
+        && (outgoingCompatibility || view->preservesXwaylandFocus() || view->restoresXwaylandPointer())
+        && m_server->exclusiveKeyboardLayer() == nullptr
+        && !isXdgPopupSurface(surface);
+    if (focusBeforeButton) {
+      m_server->focusView(view, FocusReason::PointerPress);
+    }
+
     // Pointer focus must match the surface under the cursor before the button
     // event so wl_data_device drag serial validation succeeds.
-    wlr_seat* seat = m_server->seat()->wlr();
     if (surface != nullptr) {
       setPointerFocus(surface, sx, sy, timeMsec);
     } else {
@@ -2009,7 +2045,7 @@ namespace umbriel {
       }
     } else if (m_server->exclusiveKeyboardLayer() == nullptr) {
       if (view != nullptr) {
-        if (!isXdgPopupSurface(surface)) {
+        if (!focusBeforeButton && !isXdgPopupSurface(surface)) {
           m_server->focusView(view, FocusReason::PointerPress);
         }
       } else if (surface == nullptr || wlr_xwayland_surface_try_from_wlr_surface(surface) == nullptr) {
@@ -2444,7 +2480,9 @@ namespace umbriel {
       const double scale = surfaceScale(seat->pointer_state.focused_surface);
       const double sx = seat->pointer_state.sx + ((m_cursor->x - oldX) * scale);
       const double sy = seat->pointer_state.sy + ((m_cursor->y - oldY) * scale);
-      wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
+      if (pointerInputAllowed(seat->pointer_state.focused_surface)) {
+        wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
+      }
       updateConstraintForSurface(seat->pointer_state.focused_surface);
       return;
     }
@@ -2466,7 +2504,6 @@ namespace umbriel {
 
     if (surface != nullptr) {
       setPointerFocus(surface, sx, sy, timeMsec);
-      wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
     } else {
       if (!m_compositorOwnsCursor) {
         setXcursor("default");
@@ -2510,6 +2547,8 @@ namespace umbriel {
       // `focused` in the workspaces payload is the active workspace of the cursor's output, so crossing heads changes
       // it even when no workspace activates: a switch to a workspace already active elsewhere only warps the cursor.
       m_server->scheduleIpcWorkspacesEvent();
+      // With no keyboard focus the pointer decides which output counts as focused for the native screen border.
+      m_server->refreshScreenBorders();
       wlr_seat* seat = m_server->seat()->wlr();
       if (allowFocusChange
           && config().input.focus.followsMouse
@@ -3533,7 +3572,10 @@ namespace umbriel {
   }
 
   void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec) {
-    if (surface == nullptr) {
+    if (syncRestoredXwaylandPointer()) {
+      return;
+    }
+    if (surface == nullptr || !pointerInputAllowed(surface)) {
       clearPointerFocus();
       return;
     }
@@ -3546,6 +3588,24 @@ namespace umbriel {
     if (seat->drag != nullptr && seat->drag->dropped) {
       return;
     }
+    View* resumeView = View::fromSurface(wlr_surface_get_root_surface(surface));
+    if (resumeView != nullptr && resumeView->m_xwaylandPointerResume.has_value()) {
+      auto* constraint =
+          wlr_pointer_constraints_v1_constraint_for_surface(m_server->pointerConstraints(), surface, seat);
+      if (!resumeView->restoresXwaylandPointer()
+          || surface != resumeView->rootSurface()
+          || (constraint != nullptr && constraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED)) {
+        resumeView->m_xwaylandPointerResume.reset();
+        resumeView->syncXwaylandConfigure();
+      } else {
+        prepareXwaylandPointerRestore(*resumeView);
+        finishXwaylandPointerRestore(*resumeView);
+        if (syncRestoredXwaylandPointer()) {
+          return;
+        }
+      }
+    }
+
     if (surface == seat->pointer_state.focused_surface) {
       wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
     } else {
@@ -3585,6 +3645,9 @@ namespace umbriel {
   }
 
   void Cursor::refreshPointerContents(const Output* output) {
+    if (output != nullptr && syncRestoredXwaylandPointer(output)) {
+      return;
+    }
     wlr_seat* seat = m_server->seat()->wlr();
     if (output == nullptr
         || m_cursorHidden

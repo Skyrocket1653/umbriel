@@ -197,8 +197,10 @@ namespace umbriel {
                 return read(node);
               }
           ),
+          strict(boolean("is_xwayland", &W::matchXwayland)),
           strict(boolean("is_focused", &W::matchFocused)),
           strict(boolean("is_floating", &W::matchFloating)),
+          strict(boolean("is_fullscreen", &W::matchFullscreen)),
           strict(boolean("is_maximized_to_edges", &W::matchMaximizedToEdges)),
           strict(boolean("is_pinned", &W::matchPinned)),
           strict(boolean("is_scratchpad", &W::matchScratchpad)),
@@ -230,6 +232,8 @@ namespace umbriel {
           real("touchpad_scroll_factor", 0.1, 10.0, &W::touchpadScrollFactor),
           boolean("allow_shortcuts_inhibit", &W::allowShortcutsInhibit),
           boolean("background_render", &W::backgroundRender),
+          boolean("xwayland_preserve_focus", &W::xwaylandPreserveFocus),
+          boolean("xwayland_restore_pointer", &W::xwaylandRestorePointer),
           boolean("block_capture", &W::blockCapture),
           boolean("tearing", &W::allowTearing),
           boolean("blur", &W::blur),
@@ -257,6 +261,13 @@ namespace umbriel {
               }
           ),
           integer("border_width", 0, 100, &W::borderWidth),
+          registry::choice("border_style", &W::borderStyle, borderStyles()),
+          registry::choice(
+              "border_placement", &W::borderPlacement,
+              {{"outside", BorderPlacement::Outside}, {"inset", BorderPlacement::Inset}}
+          ),
+          boolean("border_in_capture", &W::borderInCapture),
+          registry::table("border_chalk", &W::borderChalk, chalkFields()),
           integer("outer_border_width", 0, 100, &W::outerBorderWidth),
           integer("corner_radius", 0, 100, &W::cornerRadius),
           boolean("shadow", &W::shadow),

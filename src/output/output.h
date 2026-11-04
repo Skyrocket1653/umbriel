@@ -6,6 +6,7 @@
 #include "output/frame_schedule.h"
 #include "output/hdr_metadata.h"
 #include "output/hdr_transition.h"
+#include "scene/chalk_border.h"
 #include "scene/effect_audio.h"
 #include "scene/effect_selection.h"
 
@@ -88,6 +89,7 @@ namespace umbriel {
     // Pushes the effect capture policy and the screen and cursor presets to this output's scene. Detached while
     // effects are suspended; the instances are visible only while the output is enabled.
     void applyOutputEffects();
+    void applyScreenBorder();
     EffectSlot& screenEffectSlot() { return m_screenEffectSlot; }
     const EffectSlot& screenEffectSlot() const { return m_screenEffectSlot; }
     // Captures are released only by a built frame: asks for one when the last frame kept effects out of a capture.
@@ -295,6 +297,7 @@ namespace umbriel {
     EffectSlot m_screenEffectSlot;
     EffectAudio m_effectAudio{}; // bands and availability latched at the last effect frame
     uint64_t m_effectFrames = 0;
+    std::unique_ptr<ChalkBorder> m_chalkBorder;
     float m_effectSeconds = 0.0F;
     bool m_outputEffectsTimed = false; // a visible screen or cursor instance here reads umbriel_time
     char m_cursorEffectOwner{};        // ledger identity of the cursor slot; the screen slot uses `this`

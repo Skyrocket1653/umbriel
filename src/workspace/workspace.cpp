@@ -2113,6 +2113,32 @@ namespace umbriel {
     return true;
   }
 
+  bool Workspace::consumeOrExpelFocused(int direction) {
+    if (expelFocused(direction)) {
+      return true;
+    }
+    if (ScrollingLayout* scrolling = scrollingLayout()) {
+      flushArrange();
+      const int source = scrolling->columnOf(m_focusedView);
+      const int target = source + direction;
+      const auto& columns = scrolling->columns();
+      if (source >= 0 && target >= 0 && target < static_cast<int>(columns.size())) {
+        const Column& column = columns[static_cast<size_t>(target)];
+        const bool coversColumn = std::ranges::any_of(column.views, [&](View* view) {
+          return !hiddenTab(column, view) && (view->scheduledFullscreen() || view->currentFullscreen());
+        });
+        if (coversColumn) {
+          // Keep both lanes intact so the fullscreen window cannot cover the moved window.
+          scrolling->moveColumn(source, target);
+          revealMovedFocusedColumn(source);
+          markArrange();
+          return true;
+        }
+      }
+    }
+    return consumeFocused(direction);
+  }
+
   bool Workspace::consumeFromFocused(int direction) {
     if (!m_layout->consumeFrom(m_focusedView, direction)) {
       return false;

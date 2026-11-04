@@ -29,6 +29,9 @@ curve = "linear"
 
 [[window_rule]]
 match.title = "^xwayland-fullscreen-move$"
+match.is_xwayland = true
+xwayland_preserve_focus = true
+xwayland_restore_pointer = true
 default_floating = true
 default_floating_size_px = { width = 400, height = 300 }
 default_position = { x = 300, y = 200, anchor = "top_left" }

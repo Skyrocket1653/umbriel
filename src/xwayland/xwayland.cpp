@@ -5,6 +5,7 @@
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "server/server.h"
+#include "view/view.h"
 #include "wlr.h"
 #include "xwayland/primary.h"
 #include "xwayland/shape.h"
@@ -212,6 +213,26 @@ namespace umbriel {
     }
     const auto found = std::ranges::find(m_windows, xsurface, &XwaylandWindow::xsurface);
     return found != m_windows.end() ? (*found)->scale() : 1.0;
+  }
+
+  std::optional<std::array<double, 2>> Xwayland::pointerPosition(wlr_xwayland_surface* surface) const {
+    if (m_wlr == nullptr || surface == nullptr || surface->surface == nullptr) {
+      return std::nullopt;
+    }
+    xcb_connection_t* connection = wlr_xwayland_get_xwm_connection(m_wlr);
+    if (connection == nullptr || xcb_connection_has_error(connection) != 0) {
+      return std::nullopt;
+    }
+    auto* reply = xcb_query_pointer_reply(connection, xcb_query_pointer(connection, surface->window_id), nullptr);
+    if (reply == nullptr) {
+      return std::nullopt;
+    }
+    std::optional<std::array<double, 2>> position;
+    if (reply->same_screen) {
+      position = std::array<double, 2>{static_cast<double>(reply->win_x), static_cast<double>(reply->win_y)};
+    }
+    std::free(reply);
+    return position;
   }
 
   bool Xwayland::ownsSurface(const wlr_surface* surface) const {
@@ -434,10 +455,32 @@ namespace umbriel {
     wl_event_source_timer_update(m_selectionRefreshTimer, 1);
   }
 
-  void Xwayland::clearFocus() {
+  void Xwayland::clearFocus(bool force) {
     xcb_connection_t* connection = wlr_xwayland_get_xwm_connection(m_wlr);
     if (connection == nullptr) {
       return;
+    }
+    if (!force && !m_server.sessionLocked()) {
+      // Query only when an opted-in live window exists. Never retain a destroyed/unmapped owner's focus,
+      // and never let an unrelated opted-in window protect another X client's focus.
+      const auto& views = m_server.registry().all();
+      const bool eligible = std::ranges::any_of(views, [](const auto& view) {
+        return view->mapped() && view->xwayland() && view->preservesXwaylandFocus();
+      });
+      if (eligible) {
+        xcb_get_input_focus_reply_t* reply =
+            xcb_get_input_focus_reply(connection, xcb_get_input_focus(connection), nullptr);
+        const xcb_window_t focused = reply != nullptr ? reply->focus : static_cast<xcb_window_t>(XCB_WINDOW_NONE);
+        std::free(reply);
+        if (std::ranges::any_of(views, [focused](const auto& view) {
+              return view->mapped()
+                  && view->xwayland()
+                  && view->xwaylandSurface()->window_id == focused
+                  && view->preservesXwaylandFocus();
+            })) {
+          return;
+        }
+      }
     }
     constexpr xcb_window_t kNoWindow = XCB_WINDOW_NONE;
     xcb_set_input_focus(connection, XCB_INPUT_FOCUS_NONE, kNoWindow, XCB_CURRENT_TIME);

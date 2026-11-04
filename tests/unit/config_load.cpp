@@ -115,6 +115,24 @@ namespace {
   };
 } // namespace
 
+UMBRIEL_TEST(systemdAppScopesDefaultsAndReloads) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[general]\nsystemd_app_scopes = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().general.systemdAppScopes);
+  CHECK(!containsDiagnostic(store, "unknown key general.systemd_app_scopes"));
+
+  file.write("[general]\nsystemd_app_scopes = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.systemdAppScopes);
+
+  file.write("[general]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.systemdAppScopes);
+}
+
 UMBRIEL_TEST(defaultConfigLookupPrefersUserThenSystem) {
   const TempConfigTree tree;
   const std::filesystem::path userHome = tree.path("user");
@@ -2023,6 +2041,36 @@ UMBRIEL_TEST(windowStartupMatcherLoadsBoolean) {
   CHECK(!containsDiagnostic(store, "unknown key window_rule.opacity"));
 }
 
+UMBRIEL_TEST(windowInsetBorderCaptureSettingsLoad) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(R"toml(
+[appearance.border]
+in_capture = true
+
+[appearance.border.chalk]
+pixel_seconds_per_update = 8.0
+segment_seconds_per_update = 12.0
+
+[[window_rule]]
+match.is_fullscreen = true
+border_in_capture = false
+border_chalk = { pixel_seconds_per_update = 4.0 }
+)toml");
+  CHECK(store.reload().success);
+  const auto& config = store.config();
+  CHECK(config.appearance.border.inCapture);
+  const auto resolved = umbriel::resolveWindowRules(
+      config, "video", std::nullopt, std::nullopt, ContentType::None, {.fullscreen = true}, 0
+  );
+  CHECK(resolved.borderInCapture == false);
+  auto chalk = config.appearance.border.chalk;
+  chalk.overlay(resolved.borderChalk);
+  CHECK(chalk.pixelSecondsPerUpdate == 4.0);
+  CHECK(chalk.segmentSecondsPerUpdate == 12.0);
+}
+
 UMBRIEL_TEST(layerMatchersLoadLayerAndStartup) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
@@ -2081,6 +2129,24 @@ UMBRIEL_TEST(maximizedToEdgesMatcherLoadsStrictBoolean) {
   CHECK(store.reload().success);
   CHECK(store.config().windowRules.empty());
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_maximized_to_edges"));
+}
+
+UMBRIEL_TEST(fullscreenMatcherLoadsStrictBoolean) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = true\nwindow_effect = \"off\"\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchFullscreen == true);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = false\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchFullscreen == false);
+  file.write("[[window_rule]]\nmatch.is_fullscreen = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_fullscreen"));
 }
 
 UMBRIEL_TEST(windowXdgTagMatcherLoadsRegexAndRejectsInvalidValues) {
@@ -5343,6 +5409,37 @@ dim_behind = 0.0
   CHECK(!store.config().windowRules[0].dimBehind.has_value());
   CHECK(!store.config().layerRules[0].dimBehind.has_value());
   CHECK(containsDiagnostic(store, "dim_behind"));
+}
+
+UMBRIEL_TEST(xwaylandFocusRuleAndMatcherParse) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[[window_rule]]\nmatch.is_xwayland = true\nxwayland_preserve_focus = true\nxwayland_restore_pointer = true\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchXwayland == true);
+  CHECK(store.config().windowRules[0].xwaylandPreserveFocus == true);
+  CHECK(store.config().windowRules[0].xwaylandRestorePointer == true);
+  file.write(
+      "[[window_rule]]\nmatch.is_xwayland = false\nxwayland_preserve_focus = false\nxwayland_restore_pointer = false\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules[0].matchXwayland == false);
+  CHECK(store.config().windowRules[0].xwaylandPreserveFocus == false);
+  CHECK(store.config().windowRules[0].xwaylandRestorePointer == false);
+  file.write("[[window_rule]]\nmatch.is_xwayland = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  file.write("[[window_rule]]\nxwayland_preserve_focus = \"yes\"\nxwayland_restore_pointer = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].xwaylandPreserveFocus.has_value());
+  CHECK(!store.config().windowRules[0].xwaylandRestorePointer.has_value());
+  CHECK(containsDiagnostic(store, "xwayland_preserve_focus"));
+  CHECK(containsDiagnostic(store, "xwayland_restore_pointer"));
 }
 
 int main() { return RUN_TESTS(); }

@@ -17,8 +17,10 @@ default_workspace = 2
 | `match.xdg_tag`               | Match a client-defined XDG toplevel tag.                                                      |
 | `match.content_type`          | Match `"none"`, `"photo"`, `"video"`, or `"game"`.                                            |
 | `match.layout`                | Match the window's workspace layout: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`. |
+| `match.is_xwayland`           | Match Xwayland windows (`true`) or native Wayland windows (`false`).                          |
 | `match.is_focused`            | Match current focus state.                                                                    |
 | `match.is_floating`           | Match current floating state.                                                                 |
+| `match.is_fullscreen`         | Match the compositor's current requested fullscreen state.                                    |
 | `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                                       |
 | `match.is_pinned`             | Match current pinned state.                                                                   |
 | `match.is_scratchpad`         | Match current scratchpad state.                                                               |
@@ -465,3 +467,27 @@ dim_behind = 0.5
 ```
 
 While the matched window is presented, content below it on its output darkens. The window, its popups, and surfaces above it keep their normal brightness. Dimming follows the opening fade and clears when the window unmaps or leaves the output. It is suppressed in the overview. It does not intercept pointer input. Several dimming surfaces stack their dimming. Like other dynamic visual rules, it refreshes on config reload and identity or state changes; a later matching `dim_behind = 0.0` disables it. To dim only while focused, add `match.is_focused = true` to the rule.
+
+### Xwayland focus compatibility
+
+`match.is_xwayland = true` selects Xwayland windows; `false` selects native Wayland windows. Omitting it matches either kind.
+
+For an Xwayland game that stalls when X focus is cleared after switching to a native Wayland window, opt in per game:
+
+```toml
+[[window_rule]]
+match.is_xwayland = true
+match.app_id = "^YOUR_GAME_APP_ID$"
+xwayland_preserve_focus = true
+xwayland_restore_pointer = true
+```
+
+Use the app ID shown by `umbriel windows --json` (X11's WM_CLASS class). `xwayland_preserve_focus` defaults to false and has no effect on native Wayland windows. The last matching rule defining it wins. Do not combine it with a focus-state matcher when the intention is to keep it enabled after focus leaves.
+
+This preserves the opted-in game's X11 activation on deactivation and exempts its X core focus and `_NET_ACTIVE_WINDOW` from the explicit native-handoff cleanup. Compositor focus, borders, `match.is_focused` and Wayland seat input routing still change normally. Another Xwayland window takes X focus normally when it receives real input focus. Overview preview selection changes only compositor focus appearance; X11 activation is reconciled when overview closes. Session lock forcibly clears X focus; unmapped or destroyed owners do not qualify for preservation. Disabling/removing the rule and reloading rechecks cleanup while a native client owns the keyboard. It does not fake focus-in events repeatedly, maintain pointer confinement, or guarantee that a particular game keeps rendering.
+
+This compatibility mode intentionally leaves X focus signals stale while a native Wayland application has real input focus. Test it with the specific game, including keyboard delivery, held keys, mouse capture and focus restoration. It is not recommended as a blanket rule for all Xwayland applications.
+
+`xwayland_restore_pointer` is a separate opt-in, defaulting to false. For Xwayland windows with a locked pointer, it saves the surface-local pointer baseline before input leaves and restores it when input returns. The saved pointer coordinates are installed before X11 activation and keyboard entry. Capture is then restored without waiting for the window to slide back on-screen. A focus-centering warp or scene refresh cannot replace that baseline while the restored lock is active. It has no effect on native Wayland windows, and it can be used with or without `xwayland_preserve_focus`. Releasing the mouse lock while actively playing, or unmapping the window, discards the saved baseline. A lock released during an X11 focus handoff can be recreated after focus returns without losing the saved position. If the game returns to an unlocked menu instead, physical mouse movement or a click resumes ordinary pointer input.
+
+Both options support later-rule overrides, including `false`. Neither changes compositor focus or routes keyboard or pointer input to the background game. Another Xwayland window takes X11 focus normally. Entering fullscreen or resizing its buffer uses the final layout target for X11 geometry. While an established fullscreen game retains focus across a native handoff, its X11 origin stays fixed so scrolling does not become apparent mouse movement. Ordinary matched windows without a saved game capture keep normal pointer hover and click behavior.

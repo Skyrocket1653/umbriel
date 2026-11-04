@@ -1,4 +1,5 @@
 #pragma once
+#include "config/chalk.h"
 #include "config/config_diag.h"
 #include "config/effects.h"
 #include "config/keybind_parse.h"
@@ -386,8 +387,10 @@ namespace umbriel {
   // Window state the `match.is_*` selectors test. Every field is a live
   // property, so a change to any of them re-selects a window's rules.
   struct WindowRuleState {
+    bool xwayland = false;
     bool focused = false;
     bool floating = false;
+    bool fullscreen = false;
     bool maximizedToEdges = false;
     bool pinned = false;
     bool scratchpad = false;
@@ -427,9 +430,11 @@ namespace umbriel {
     RegexPatterns titlePatterns;
     RegexPatterns xdgTagPatterns;
     std::optional<ContentType> matchContentType;
+    std::optional<bool> matchXwayland;
     std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
+    std::optional<bool> matchFullscreen;
     std::optional<bool> matchMaximizedToEdges;
     std::optional<bool> matchPinned;
     std::optional<bool> matchScratchpad;
@@ -468,6 +473,8 @@ namespace umbriel {
     // Keep a hidden window unsuspended and pace its frame callbacks at its output's refresh rate, for clients whose
     // non-rendering work stalls without them.
     std::optional<bool> backgroundRender;
+    std::optional<bool> xwaylandPreserveFocus;
+    std::optional<bool> xwaylandRestorePointer;
     std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     // Overrides the client's tearing-control hint. Omitted follows the hint,
@@ -489,6 +496,10 @@ namespace umbriel {
     std::optional<std::array<float, 4>> borderColorOuter;
     // Override [appearance] border_width, outer_border_width, corner_radius, and shadow.enabled for windows this rule
     // matches.
+    std::optional<BorderStyle> borderStyle;
+    std::optional<BorderPlacement> borderPlacement;
+    std::optional<bool> borderInCapture;
+    ChalkSettings borderChalk;
     std::optional<int> borderWidth;
     std::optional<int> outerBorderWidth;
     std::optional<int> cornerRadius;
@@ -503,9 +514,11 @@ namespace umbriel {
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
           && matchContentType == other.matchContentType
+          && matchXwayland == other.matchXwayland
           && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
+          && matchFullscreen == other.matchFullscreen
           && matchMaximizedToEdges == other.matchMaximizedToEdges
           && matchPinned == other.matchPinned
           && matchScratchpad == other.matchScratchpad
@@ -539,6 +552,8 @@ namespace umbriel {
           && touchpadScrollFactor == other.touchpadScrollFactor
           && allowShortcutsInhibit == other.allowShortcutsInhibit
           && backgroundRender == other.backgroundRender
+          && xwaylandPreserveFocus == other.xwaylandPreserveFocus
+          && xwaylandRestorePointer == other.xwaylandRestorePointer
           && blockCapture == other.blockCapture
           && vrr == other.vrr
           && allowTearing == other.allowTearing
@@ -554,6 +569,10 @@ namespace umbriel {
           && borderColorFocused == other.borderColorFocused
           && borderColorUnfocused == other.borderColorUnfocused
           && borderColorOuter == other.borderColorOuter
+          && borderStyle == other.borderStyle
+          && borderPlacement == other.borderPlacement
+          && borderInCapture == other.borderInCapture
+          && borderChalk == other.borderChalk
           && borderWidth == other.borderWidth
           && outerBorderWidth == other.outerBorderWidth
           && cornerRadius == other.cornerRadius
@@ -590,6 +609,8 @@ namespace umbriel {
     std::optional<double> touchpadScrollFactor;
     std::optional<bool> allowShortcutsInhibit;
     std::optional<bool> backgroundRender;
+    std::optional<bool> xwaylandPreserveFocus;
+    std::optional<bool> xwaylandRestorePointer;
     std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;
@@ -605,6 +626,10 @@ namespace umbriel {
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;
+    std::optional<BorderStyle> borderStyle;
+    std::optional<BorderPlacement> borderPlacement;
+    std::optional<bool> borderInCapture;
+    ChalkSettings borderChalk;
     std::optional<int> borderWidth;
     std::optional<int> outerBorderWidth;
     std::optional<int> cornerRadius;
@@ -741,6 +766,15 @@ namespace umbriel {
     } colors;
 
     struct Appearance {
+      struct Border {
+        bool inCapture = false;
+        ChalkSettings chalk;
+        bool operator==(const Border&) const = default;
+      } border;
+      struct Screen {
+        ScreenInnerBorder innerBorder;
+        bool operator==(const Screen&) const = default;
+      } screen;
       struct TitleBar {
         TitleBarMode mode = TitleBarMode::Off;
         int height = 28;
@@ -1112,6 +1146,8 @@ namespace umbriel {
       bool showCheatsheet = true;
       // Honor activation requests by focusing and revealing the target window.
       bool focusOnActivate = false;
+      // Wrap future commands in user scopes when running as a managed native session.
+      bool systemdAppScopes = true;
       // Hang a modal dialog on its parent's frame, so it follows the parent and holds its input.
       bool attachModalDialogs = true;
       // Honor maximized state restored by a client while its window opens.
