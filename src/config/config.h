@@ -417,6 +417,7 @@ namespace umbriel {
   // Window state the `match.is_*` selectors test. Every field is a live
   // property, so a change to any of them re-selects a window's rules.
   struct WindowRuleState {
+    bool xwayland = false;
     bool focused = false;
     bool floating = false;
     bool maximized = false;
@@ -462,6 +463,7 @@ namespace umbriel {
     // The output the window is on or about to open on: connector name or "<make> <model> <serial>" descriptor.
     RegexPatterns outputPatterns;
     std::optional<ContentType> matchContentType;
+    std::optional<bool> matchXwayland;
     std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
@@ -505,6 +507,8 @@ namespace umbriel {
     // Keep a hidden window unsuspended and pace its frame callbacks at its output's refresh rate, for clients whose
     // non-rendering work stalls without them.
     std::optional<bool> backgroundRender;
+    std::optional<bool> xwaylandPreserveFocus;
+    std::optional<bool> xwaylandRestorePointer;
     std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     // Overrides the client's tearing-control hint. Omitted follows the hint,
@@ -546,6 +550,7 @@ namespace umbriel {
           && xdgTagPatterns == other.xdgTagPatterns
           && outputPatterns == other.outputPatterns
           && matchContentType == other.matchContentType
+          && matchXwayland == other.matchXwayland
           && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
@@ -584,6 +589,8 @@ namespace umbriel {
           && touchpadScrollFactor == other.touchpadScrollFactor
           && allowShortcutsInhibit == other.allowShortcutsInhibit
           && backgroundRender == other.backgroundRender
+          && xwaylandPreserveFocus == other.xwaylandPreserveFocus
+          && xwaylandRestorePointer == other.xwaylandRestorePointer
           && blockCapture == other.blockCapture
           && vrr == other.vrr
           && allowTearing == other.allowTearing
@@ -640,6 +647,8 @@ namespace umbriel {
     std::optional<double> touchpadScrollFactor;
     std::optional<bool> allowShortcutsInhibit;
     std::optional<bool> backgroundRender;
+    std::optional<bool> xwaylandPreserveFocus;
+    std::optional<bool> xwaylandRestorePointer;
     std::optional<bool> blockCapture;
     std::optional<VrrMode> vrr;
     std::optional<bool> allowTearing;

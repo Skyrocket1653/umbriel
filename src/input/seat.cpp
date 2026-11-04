@@ -36,6 +36,9 @@ namespace umbriel {
     m_pointerFocusChange.notify = onPointerFocusChange;
     wl_signal_add(&m_seat->pointer_state.events.focus_change, &m_pointerFocusChange);
 
+    m_keyboardFocusChange.notify = onKeyboardFocusChange;
+    wl_signal_add(&m_seat->keyboard_state.events.focus_change, &m_keyboardFocusChange);
+
     m_requestSetSelection.notify = onRequestSetSelection;
     wl_signal_add(&m_seat->events.request_set_selection, &m_requestSetSelection);
 
@@ -60,6 +63,7 @@ namespace umbriel {
     wl_list_remove(&m_requestCursor.link);
     wl_list_remove(&m_requestSetShape.link);
     wl_list_remove(&m_pointerFocusChange.link);
+    wl_list_remove(&m_keyboardFocusChange.link);
     wl_list_remove(&m_requestSetSelection.link);
     wl_list_remove(&m_requestSetPrimarySelection.link);
     wl_list_remove(&m_requestStartDrag.link);
@@ -150,6 +154,12 @@ namespace umbriel {
   void Seat::onPointerFocusChange(wl_listener* listener, void* data) {
     Seat* self = wl_container_of(listener, self, m_pointerFocusChange);
     self->handlePointerFocusChange(data);
+  }
+
+  void Seat::onKeyboardFocusChange(wl_listener* listener, void* data) {
+    Seat* self = wl_container_of(listener, self, m_keyboardFocusChange);
+    auto* event = static_cast<wlr_seat_keyboard_focus_change_event*>(data);
+    self->m_server->cursor()->handleKeyboardFocusChange(event->old_surface, event->new_surface);
   }
 
   void Seat::onRequestSetSelection(wl_listener* listener, void* data) {

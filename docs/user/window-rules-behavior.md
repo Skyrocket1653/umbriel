@@ -27,6 +27,22 @@ vrr = "always"
 
 ## Games
 
+### Xwayland compatibility
+
+Use the `xwayland` subtable in a window rule for game compatibility:
+
+```toml
+[[window_rule]]
+match.is_xwayland = true
+match.app_id = "^YOUR_GAME_APP_ID$"
+xwayland.preserve_focus = true
+xwayland.restore_pointer = true
+```
+
+`xwayland.preserve_focus` retains the game's Xwayland activation across compositor focus handoffs. `xwayland.restore_pointer` saves and restores its pointer state when returning to the game. Both default to `false`, apply only to Xwayland windows, and can be enabled or disabled independently. Later matching rules override only the fields they set.
+
+The same settings can be written as `xwayland = { preserve_focus = true, restore_pointer = true }` within the rule. Compositor focus navigation, overview, and exclusive shell keyboard input remain available.
+
 ```toml
 # Keep the pointer in games that release it in menus
 [[window_rule]]
