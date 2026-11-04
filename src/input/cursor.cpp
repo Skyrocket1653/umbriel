@@ -425,7 +425,9 @@ namespace umbriel {
       const Workspace* workspace = group != nullptr ? group->active() : nullptr;
       focused = workspace != nullptr ? workspace->focusedView() : nullptr;
     }
-    if (focused != nullptr
+    // Fullscreen content is a card while the overview is interactive; it no longer covers the corners.
+    if (!overviewOpen
+        && focused != nullptr
         && focused->mapped()
         && focused->onActiveWorkspace()
         && focused->currentOutput() == umbrielOutput
@@ -1309,6 +1311,13 @@ namespace umbriel {
   void Cursor::warpToPreservingFocus(double lx, double ly) { warpTo(lx, ly, false); }
 
   bool Cursor::warpToView(View& view) {
+    if (view.m_xwaylandPointerResume.has_value() && !view.m_xwaylandPointerResume->pending
+        && view.preservesXwaylandFocus() && m_activeConstraint != nullptr
+        && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED
+        && m_activeConstraint->surface == view.rootSurface()) {
+      // Restored game capture already has its own baseline. A follows-focus centering warp would replace it.
+      return true;
+    }
     Output* output = view.currentOutput();
     if (output == nullptr) {
       return false;
@@ -1489,13 +1498,16 @@ namespace umbriel {
       }
     }
 
-    wlr_relative_pointer_manager_v1_send_relative_motion(
-        m_server->relativePointerManager(), m_server->seat()->wlr(), static_cast<uint64_t>(event->time_msec) * 1000,
-        event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy
-    );
-
     if (m_activeConstraint != nullptr && !constraintSurfaceActive()) {
       clearConstraint();
+    }
+    // A retained X activation is not permission to receive mouse deltas. This also covers an old implicit
+    // button grab, whose releases still need to reach the original surface after keyboard focus moves.
+    if (pointerInputAllowed(m_server->seat()->wlr()->pointer_state.focused_surface)) {
+      wlr_relative_pointer_manager_v1_send_relative_motion(
+          m_server->relativePointerManager(), m_server->seat()->wlr(), static_cast<uint64_t>(event->time_msec) * 1000,
+          event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy
+      );
     }
     if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
       return;
@@ -2432,7 +2444,9 @@ namespace umbriel {
       const double scale = surfaceScale(seat->pointer_state.focused_surface);
       const double sx = seat->pointer_state.sx + ((m_cursor->x - oldX) * scale);
       const double sy = seat->pointer_state.sy + ((m_cursor->y - oldY) * scale);
-      wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
+      if (pointerInputAllowed(seat->pointer_state.focused_surface)) {
+        wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
+      }
       updateConstraintForSurface(seat->pointer_state.focused_surface);
       return;
     }
@@ -2454,7 +2468,6 @@ namespace umbriel {
 
     if (surface != nullptr) {
       setPointerFocus(surface, sx, sy, timeMsec);
-      wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
     } else {
       if (!m_compositorOwnsCursor) {
         setXcursor("default");
@@ -2497,6 +2510,8 @@ namespace umbriel {
       // `focused` in the workspaces payload is the active workspace of the cursor's output, so crossing heads changes
       // it even when no workspace activates: a switch to a workspace already active elsewhere only warps the cursor.
       m_server->scheduleIpcWorkspacesEvent();
+      // With no keyboard focus the pointer decides which output counts as focused for the native screen border.
+      m_server->refreshScreenBorders();
       wlr_seat* seat = m_server->seat()->wlr();
       if (allowFocusChange
           && config().input.focus.followsMouse
@@ -3510,7 +3525,7 @@ namespace umbriel {
   }
 
   void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec) {
-    if (surface == nullptr) {
+    if (surface == nullptr || !pointerInputAllowed(surface)) {
       clearPointerFocus();
       return;
     }
@@ -3523,10 +3538,52 @@ namespace umbriel {
     if (seat->drag != nullptr && seat->drag->dropped) {
       return;
     }
+    View* resumeView = View::fromSurface(wlr_surface_get_root_surface(surface));
+    bool restoring = false;
+    if (resumeView != nullptr && resumeView->m_xwaylandPointerResume.has_value()) {
+      auto* constraint = wlr_pointer_constraints_v1_constraint_for_surface(
+          m_server->pointerConstraints(), surface, seat
+      );
+      if (!resumeView->preservesXwaylandFocus() || surface != resumeView->rootSurface()
+          || constraint == nullptr || constraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED) {
+        // The game released capture (for example, to show a menu): normal pointer placement wins.
+        resumeView->m_xwaylandPointerResume.reset();
+        resumeView->syncXwaylandConfigure();
+      } else {
+        auto& resume = *resumeView->m_xwaylandPointerResume;
+        if (resume.pending || (seat->pointer_state.focused_surface == surface && m_activeConstraint == constraint)) {
+          const double scale = surfaceScale(surface);
+          const double maxX = std::max(0.0, static_cast<double>(surface->current.width - 1));
+          const double maxY = std::max(0.0, static_cast<double>(surface->current.height - 1));
+          const double px = resume.pending ? std::clamp(resume.x, 0.0, maxX) : seat->pointer_state.sx;
+          const double py = resume.pending ? std::clamp(resume.y, 0.0, maxY) : seat->pointer_state.sy;
+          int lx = 0;
+          int ly = 0;
+          if (!wlr_scene_node_coords(&resumeView->m_contentTree->node, &lx, &ly)
+              || !wlr_cursor_warp(m_cursor, nullptr, lx + px / scale, ly + py / scale)) {
+            // Layout reveal can still be moving the saved point onto the output. Retry on the next rebase.
+            clearPointerFocus();
+            return;
+          }
+          forwardEffectPointer();
+          if (!resume.pending) {
+            // A scene rebase or compositor warp must not become absolute mouse motion during a lock.
+            return;
+          }
+          sx = px;
+          sy = py;
+          restoring = true;
+        }
+      }
+    }
     if (surface == seat->pointer_state.focused_surface) {
       wlr_seat_pointer_notify_motion(seat, timeMsec, sx, sy);
     } else {
       wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+    }
+    if (restoring && seat->pointer_state.focused_surface == surface) {
+      resumeView->m_xwaylandPointerResume->pending = false;
+      updateConstraintForSurface(surface);
     }
   }
 

@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "input/seat.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/surface_shape.h"
@@ -61,6 +62,10 @@ namespace umbriel {
         && m_xsurface->hints->input == 0;
   }
 
+  bool View::preservesXwaylandFocus() {
+    return xwayland() && resolvedRules().xwaylandPreserveFocus.value_or(false);
+  }
+
   void View::setActivatedState(bool activated) {
     if (m_toplevel != nullptr) {
       wlr_xdg_toplevel_set_activated(m_toplevel, activated);
@@ -68,9 +73,20 @@ namespace umbriel {
     }
     m_xState.activated = activated;
     if (activated) {
+      // Synchronize placement unless a remembered mouse lock still needs a stable X11 coordinate baseline.
+      if (preservesXwaylandFocus()) {
+        syncXwaylandConfigure();
+      }
       // An ignored WM_CHANGE_STATE request can leave Wine waiting for a WM_STATE reply even though wlroots never
       // marked the surface minimized. Reassert NormalState on activation so the client can complete its restore.
       wlr_xwayland_surface_set_minimized(m_xsurface, false);
+    }
+    // Keep only X11 focus signals: compositor focus, chrome and input routing still move normally.
+    if (!activated
+        && m_mapped
+        && !m_server->sessionLocked()
+        && preservesXwaylandFocus()) {
+      return;
     }
     wlr_xwayland_surface_activate(m_xsurface, activated);
   }
@@ -336,6 +352,15 @@ namespace umbriel {
     }
     const XwaylandRegion region = xwaylandRegion();
     applyXwaylandScale(region.scale);
+    const bool preserveFocus = preservesXwaylandFocus();
+    if (m_xwaylandPointerResume.has_value()) {
+      const auto* constraint = wlr_pointer_constraints_v1_constraint_for_surface(
+          m_server->pointerConstraints(), rootSurface(), m_server->seat()->wlr()
+      );
+      if (!preserveFocus || constraint == nullptr || constraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED) {
+        m_xwaylandPointerResume.reset();
+      }
+    }
     // The frame's position is its place in layout coordinates: a workspace slide moves the workspace tree around it
     // and does not change it. Its own animated motion is not published frame by frame either, because X clients, games
     // in particular, react to every move; the last tick of the animation publishes where the window came to rest.
@@ -349,6 +374,16 @@ namespace umbriel {
     ly = std::clamp(ly, kMinCoordinate, kMaxCoordinate);
     const bool moving = m_posX.animating() || m_posY.animating() || m_layoutMotion || openingInsetActive();
     if (moving && m_xConfigured.x != INT_MIN) {
+      lx = m_xConfigured.x;
+      ly = m_xConfigured.y;
+    }
+    if ((!m_xState.activated || m_xwaylandPointerResume.has_value())
+        && m_xConfigured.x != INT_MIN && preserveFocus) {
+      // Same-workspace focus changes can scroll this window after its pointer has left. Moving the X window
+      // beneath Xwayland's last cursor position changes the coordinates a game polls, even with no new mouse
+      // events. Workspace slides already keep X coordinates stationary; give retained-focus games the same
+      // behavior during layout movement and recapture. Publish the real position after the game releases its
+      // mouse lock, so neither polling nor pointer entry sees a coordinate discontinuity. Sizes still resize.
       lx = m_xConfigured.x;
       ly = m_xConfigured.y;
     }

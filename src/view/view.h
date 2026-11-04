@@ -1,6 +1,7 @@
 #pragma once
 #include "config/config.h"
 #include "core/animation.h"
+#include "scene/chalk_border.h"
 #include "scene/node.h"
 #include "view/chrome_attachment.h"
 #include "view/decoration.h"
@@ -152,6 +153,8 @@ namespace umbriel {
     std::optional<bool> tearingRuleOverride();
     bool confinePointer();
     bool allowsShortcutsInhibit();
+    // Effective X11-only compatibility rule; does not change compositor focus or input delivery.
+    bool preservesXwaylandFocus();
     // A `background_render` rule applies: while hidden, the window stays unsuspended and gets frame callbacks at its
     // output's refresh rate.
     bool backgroundRender() const { return m_backgroundRender; }
@@ -916,6 +919,13 @@ namespace umbriel {
       int width = 0;
       int height = 0;
     } m_xConfigured;
+    // A retained-focus game resumes its last locked, surface-local pointer baseline, not a desktop coordinate.
+    struct XwaylandPointerResume {
+      double x = 0;
+      double y = 0;
+      bool pending = true;
+    };
+    std::optional<XwaylandPointerResume> m_xwaylandPointerResume;
     double m_xScale = 1.0;
     // The size the compositor wants an X11 window at (0 = the client's own), the counterpart of xdg's scheduled size.
     ClientSize m_xScheduled;
@@ -939,6 +949,12 @@ namespace umbriel {
     // must never sample the composited desktop behind translucent content.
     wlr_scene* m_captureScene = nullptr;
     ViewDecoration m_decoration;
+    std::unique_ptr<ChalkBorder> m_chalkBorder;
+    wlr_scene_border* m_insetBorder = nullptr;
+    wlr_scene_border* m_captureInsetBorder = nullptr;
+    std::unique_ptr<ChalkBorder> m_captureChalkBorder;
+    void syncNativeBorder(int contentWidth, int contentHeight);
+
     std::unique_ptr<ViewChromeAttachment> m_chromeAttachment;
     std::unique_ptr<SsdFrame> m_ssdFrame;
     std::optional<bool> m_xdgDecorationPreference;

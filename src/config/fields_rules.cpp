@@ -171,8 +171,10 @@ namespace umbriel {
           strict(regexField("title", &W::titlePatterns)),
           strict(regexField("xdg_tag", &W::xdgTagPatterns)),
           strict(registry::choice("content_type", &W::matchContentType, contentTypes())),
+          strict(boolean("is_xwayland", &W::matchXwayland)),
           strict(boolean("is_focused", &W::matchFocused)),
           strict(boolean("is_floating", &W::matchFloating)),
+          strict(boolean("is_fullscreen", &W::matchFullscreen)),
           strict(boolean("is_maximized_to_edges", &W::matchMaximizedToEdges)),
           strict(boolean("is_pinned", &W::matchPinned)),
           strict(boolean("is_scratchpad", &W::matchScratchpad)),
@@ -203,6 +205,7 @@ namespace umbriel {
           boolean("confine_pointer", &W::confinePointer),
           boolean("allow_shortcuts_inhibit", &W::allowShortcutsInhibit),
           boolean("background_render", &W::backgroundRender),
+          boolean("xwayland_preserve_focus", &W::xwaylandPreserveFocus),
           boolean("block_capture", &W::blockCapture),
           boolean("tearing", &W::allowTearing),
           boolean("blur", &W::blur),
@@ -229,6 +232,13 @@ namespace umbriel {
               }
           ),
           integer("border_width", 0, 100, &W::borderWidth),
+          registry::choice("border_style", &W::borderStyle, borderStyles()),
+          registry::choice(
+              "border_placement", &W::borderPlacement,
+              {{"outside", BorderPlacement::Outside}, {"inset", BorderPlacement::Inset}}
+          ),
+          boolean("border_in_capture", &W::borderInCapture),
+          registry::table("border_chalk", &W::borderChalk, chalkFields()),
           integer("outer_border_width", 0, 100, &W::outerBorderWidth),
           integer("corner_radius", 0, 100, &W::cornerRadius),
           boolean("shadow", &W::shadow),

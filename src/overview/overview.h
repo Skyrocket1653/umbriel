@@ -1,5 +1,6 @@
 #pragma once
 
+#include "scene/chalk_border.h"
 #include "config/config.h"
 #include "core/animation.h"
 #include "layout/drop_target.h"
@@ -209,6 +210,7 @@ namespace umbriel {
       // live on the view's surface tree.
       wlr_scene_tree* surfaceTree = nullptr;
       wlr_scene_border* border = nullptr;
+      std::unique_ptr<ChalkBorder> chalkBorder;
       int borderPadding = 0; // effect padding the ring was last laid out with, scaled
       SurfaceBlur blur;
       // Scaled copy of the view's drop shadow. Its tree lives under `tree` or, for a view whose shadow the workspace

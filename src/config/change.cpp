@@ -134,6 +134,7 @@ namespace umbriel {
             || lhs.matchContentType != rhs.matchContentType
             || lhs.matchFocused != rhs.matchFocused
             || lhs.matchFloating != rhs.matchFloating
+            || lhs.matchFullscreen != rhs.matchFullscreen
             || lhs.matchMaximizedToEdges != rhs.matchMaximizedToEdges
             || lhs.matchPinned != rhs.matchPinned
             || lhs.matchScratchpad != rhs.matchScratchpad

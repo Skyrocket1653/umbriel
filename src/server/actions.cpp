@@ -1140,7 +1140,7 @@ namespace umbriel {
     template <int Direction>
     bool actionConsumeOrExpel(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
-        const bool changed = workspace->expelFocused(Direction) || workspace->consumeFocused(Direction);
+        const bool changed = workspace->consumeOrExpelFocused(Direction);
         invalidateHoverFocusAfterSceneChange(server, changed);
       }
       return true;

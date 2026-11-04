@@ -578,8 +578,10 @@ namespace umbriel {
 
   WindowRuleState View::ruleState() const {
     return {
+        .xwayland = xwayland(),
         .focused = m_borderFocusedState,
         .floating = !m_tiled,
+        .fullscreen = scheduledFullscreen(),
         .maximizedToEdges = m_maximizedToEdges,
         .pinned = m_pinned,
         .scratchpad = m_inScratchpad,
@@ -694,6 +696,9 @@ namespace umbriel {
       updateBorderGeometry();
       applyCornerRadius();
       updateShadow();
+    } else {
+      const wlr_box content = committedContentBox();
+      syncNativeBorder(content.width, content.height);
     }
     if (paddingChanged) {
       // Overview cards lay their rings out from the padding too.

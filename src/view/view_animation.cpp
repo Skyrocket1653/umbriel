@@ -87,6 +87,15 @@ namespace umbriel {
     m_fadeAlpha = std::clamp(alpha, 0.0F, 1.0F);
     applyEffectiveOpacity();
     const float effective = effectiveOpacity();
+    if (m_chalkBorder) m_chalkBorder->setOpacity(effective);
+    if (m_captureChalkBorder) m_captureChalkBorder->setOpacity(effective);
+    for (auto* inset : {m_insetBorder, m_captureInsetBorder}) {
+      if (inset == nullptr || !inset->node.enabled) continue;
+      const auto& colors = m_decoration.borderColors();
+      float color[4];
+      premultiplied(color, m_borderFocusedState ? colors.focused : colors.unfocused, effective);
+      wlr_scene_border_set_colors(inset, color, color);
+    }
     m_decoration.setBorderRawColors(m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effective);
     // The analytic fallback still follows the lifecycle fade. Shader-shaped
     // shadows get their opacity from captured pixels instead of this multiplier.

@@ -9,6 +9,8 @@
 #include "wlr.h"
 #include "xwayland/xwayland.h"
 
+#include <cmath>
+
 namespace umbriel {
 
   void Cursor::handleNewConstraint(wlr_pointer_constraint_v1* constraint) {
@@ -20,6 +22,35 @@ namespace umbriel {
 
   void Cursor::clearConstraint() { setActiveConstraint(nullptr); }
 
+  void Cursor::rememberLockedXwaylandPointer() {
+    if (m_activeConstraint == nullptr || m_activeConstraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED
+        || m_server->sessionLocked()) {
+      return;
+    }
+    wlr_seat* seat = m_server->seat()->wlr();
+    wlr_surface* surface = m_activeConstraint->surface;
+    View* view = View::fromSurface(wlr_surface_get_root_surface(surface));
+    if (view == nullptr || surface != view->rootSurface() || !view->preservesXwaylandFocus()
+        || seat->pointer_state.focused_surface != surface) {
+      return;
+    }
+    const auto& hint = m_activeConstraint->current.cursor_hint;
+    const double x = hint.enabled ? hint.x : seat->pointer_state.sx;
+    const double y = hint.enabled ? hint.y : seat->pointer_state.sy;
+    if (std::isfinite(x) && std::isfinite(y)) {
+      view->m_xwaylandPointerResume = View::XwaylandPointerResume{.x = x, .y = y};
+    }
+  }
+
+  bool Cursor::pointerInputAllowed(wlr_surface* surface) const {
+    if (surface == nullptr) {
+      return true;
+    }
+    View* view = View::fromSurface(wlr_surface_get_root_surface(surface));
+    return view == nullptr || !view->preservesXwaylandFocus()
+        || View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) == view;
+  }
+
   void Cursor::onConstraintDestroy(wl_listener* listener, void* /*data*/) {
     Cursor* self;
     self = wl_container_of(listener, self, m_constraintDestroy);
@@ -27,12 +58,20 @@ namespace umbriel {
   }
 
   void Cursor::handleConstraintDestroy() {
+    View* view = View::fromSurface(wlr_surface_get_root_surface(m_activeConstraint->surface));
+    const bool resumeGeometry = view != nullptr && view->m_xwaylandPointerResume.has_value();
+    if (view != nullptr) {
+      view->m_xwaylandPointerResume.reset();
+    }
     // The client can end a lock by destroying the constraint. Apply its last
     // committed position hint before wlroots releases the constraint state.
     warpToConstraintHint(m_activeConstraint);
     wl_list_remove(&m_constraintDestroy.link);
     m_constraintDestroy.link.next = nullptr;
     m_activeConstraint = nullptr;
+    if (resumeGeometry) {
+      view->syncXwaylandConfigure();
+    }
     // Cursor visibility belongs to the focused client and remains valid across
     // pointer-constraint transitions. Focus loss restores the theme cursor.
   }
@@ -43,6 +82,7 @@ namespace umbriel {
     }
 
     if (m_activeConstraint != nullptr) {
+      rememberLockedXwaylandPointer();
       wlr_pointer_constraint_v1* previous = m_activeConstraint;
       m_activeConstraint = nullptr;
       if (m_constraintDestroy.link.next != nullptr) {
@@ -75,6 +115,8 @@ namespace umbriel {
     return view != nullptr
         && view->mapped()
         && view->onActiveWorkspace()
+        && (!view->preservesXwaylandFocus()
+            || View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) == view)
         && (!ruleConstraintApplies(*view) || ruleConstraintEligible(*view));
   }
 
@@ -90,7 +132,10 @@ namespace umbriel {
           m_server->pointerConstraints(), surface, m_server->seat()->wlr()
       );
       if (View* view = View::fromSurface(wlr_surface_get_root_surface(surface));
-          view != nullptr && ruleConstraintApplies(*view) && !ruleConstraintEligible(*view)) {
+          view != nullptr
+          && ((ruleConstraintApplies(*view) && !ruleConstraintEligible(*view))
+              || (view->preservesXwaylandFocus()
+                  && View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface) != view))) {
         constraint = nullptr;
       }
     }

@@ -18,6 +18,7 @@ default_workspace = 2
 | `match.content_type`          | Match `"none"`, `"photo"`, `"video"`, or `"game"`.                              |
 | `match.is_focused`            | Match current focus state.                                                      |
 | `match.is_floating`           | Match current floating state.                                                   |
+| `match.is_fullscreen`         | Match the compositor's current requested fullscreen state.                       |
 | `match.is_maximized_to_edges` | Match current maximized-to-edges state.                                         |
 | `match.is_pinned`             | Match current pinned state.                                                     |
 | `match.is_scratchpad`         | Match current scratchpad state.                                                 |
@@ -438,3 +439,22 @@ Protection also covers decorations, shadows, overview cards, and closing images,
 X11 transients with a known owner inherit its protection. When an X11 popup has no reliable parent, Umbriel conservatively excludes it while any X11 window is protected; this can also hide unrelated X11 menus and notifications from capture. A protected window that changes into an unmanaged popup keeps its protection until it becomes managed again.
 
 Raw `zwlr_export_dmabuf_manager_v1` export is not advertised because it would bypass the filtered composition. Use screencopy or image-copy capture clients instead, including image-copy clients with DMA-BUF destinations.
+
+### Xwayland focus compatibility
+
+`match.is_xwayland = true` selects Xwayland windows; `false` selects native Wayland windows. Omitting it matches either kind.
+
+For an Xwayland game that stalls when X focus is cleared after switching to a native Wayland window, opt in per game:
+
+```toml
+[[window_rule]]
+match.is_xwayland = true
+match.app_id = "^YOUR_GAME_APP_ID$"
+xwayland_preserve_focus = true
+```
+
+Use the app ID shown by `umbriel windows --json` (X11's WM_CLASS class). `xwayland_preserve_focus` defaults to false and has no effect on native Wayland windows. The last matching rule defining it wins. Do not combine it with a focus-state matcher when the intention is to keep it enabled after focus leaves.
+
+This preserves the opted-in game's X11 activation on deactivation and exempts its X core focus and `_NET_ACTIVE_WINDOW` from the explicit native-handoff cleanup. Compositor focus, borders, `match.is_focused` and Wayland seat input routing still change normally. Another Xwayland window takes X focus normally. Session lock forcibly clears X focus; unmapped or destroyed owners do not qualify for preservation. Disabling/removing the rule and reloading rechecks cleanup while a native client owns the keyboard. It does not fake focus-in events repeatedly, maintain pointer confinement, or guarantee that a particular game keeps rendering.
+
+This compatibility mode intentionally leaves X focus signals stale while a native Wayland application has real input focus. Test it with the specific game, including keyboard delivery, held keys, mouse capture and focus restoration. It is not recommended as a blanket rule for all Xwayland applications.
