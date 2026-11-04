@@ -1192,27 +1192,32 @@ namespace umbriel {
     wl_event_loop* loop = wl_display_get_event_loop(m_display);
     m_signalSources[0] = wl_event_loop_add_signal(loop, SIGINT, onTerminateSignal, this);
     m_signalSources[1] = wl_event_loop_add_signal(loop, SIGTERM, onTerminateSignal, this);
-    m_applicationScopesRequired = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
+    m_systemdManaged = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
     const char* inheritedNotifySocket = std::getenv("NOTIFY_SOCKET");
-    const std::string notifySocket =
-        m_applicationScopesRequired && inheritedNotifySocket != nullptr ? inheritedNotifySocket : "";
+    const std::string notifySocket = m_systemdManaged && inheritedNotifySocket != nullptr ? inheritedNotifySocket : "";
     unsetenv("NOTIFY_SOCKET");
-    if (m_applicationScopesRequired) {
+    if (m_systemdManaged) {
       m_systemdRunExecutable = resolveExecutable("systemd-run");
       m_systemctlExecutable = resolveExecutable("systemctl");
       m_systemdControlEnvironment = captureSystemdControlEnvironment();
       const std::string ownerUnit = currentSystemdUnit();
       m_sessionShutdownAvailable = ownerUnit == "umbriel.service" && !m_systemctlExecutable.empty();
       if (m_systemdRunExecutable.empty()) {
-        kLog.warn("application scope isolation unavailable: systemd-run was not found on PATH");
+        if (config().general.systemdAppScopes) {
+          kLog.warn("application scope isolation unavailable: systemd-run was not found on PATH");
+        }
       } else if (ownerUnit.empty()) {
-        kLog.warn("application scope isolation unavailable: cannot identify the compositor unit");
+        if (config().general.systemdAppScopes) {
+          kLog.warn("application scope isolation unavailable: cannot identify the compositor unit");
+        }
       } else {
         m_applicationScopePartOfProperty = "--property=PartOf=umbriel-session.target";
         m_applicationScopeBindsToProperty = "--property=BindsTo=" + ownerUnit;
         m_applicationScopeAfterProperty = "--property=After=" + ownerUnit;
         m_applicationScopeEnvironmentArguments = applicationScopeEnvironmentArguments(config().environment.variables);
-        kLog.info("application processes will use transient scopes under app.slice");
+        if (config().general.systemdAppScopes) {
+          kLog.info("application processes will use transient scopes under app.slice");
+        }
       }
     }
 
@@ -1543,7 +1548,7 @@ namespace umbriel {
       return;
     }
 
-    const bool scopeRequired = m_applicationScopesRequired;
+    const bool scopeRequired = m_systemdManaged && config().general.systemdAppScopes;
     if (scopeRequired
         && (m_systemdRunExecutable.empty()
             || m_applicationScopePartOfProperty.empty()

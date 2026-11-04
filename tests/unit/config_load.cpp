@@ -115,6 +115,24 @@ namespace {
   };
 } // namespace
 
+UMBRIEL_TEST(systemdAppScopesDefaultsAndReloads) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[general]\nsystemd_app_scopes = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().general.systemdAppScopes);
+  CHECK(!containsDiagnostic(store, "unknown key general.systemd_app_scopes"));
+
+  file.write("[general]\nsystemd_app_scopes = true\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.systemdAppScopes);
+
+  file.write("[general]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().general.systemdAppScopes);
+}
+
 UMBRIEL_TEST(defaultConfigLookupPrefersUserThenSystem) {
   const TempConfigTree tree;
   const std::filesystem::path userHome = tree.path("user");
