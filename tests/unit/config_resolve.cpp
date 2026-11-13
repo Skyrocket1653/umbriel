@@ -1592,3 +1592,69 @@ UMBRIEL_TEST(fullscreenMatcherSelectsEffectsAndRestoresDefaults) {
 }
 
 int main() { return RUN_TESTS(); }
+
+UMBRIEL_TEST(mouseSensitivityRulesResolveIndependentlyAndReset) {
+  Config config;
+  const auto resolve = [&](bool fullscreen) {
+    return umbriel::resolveWindowRules(
+        config, "game", "menu", std::nullopt, ContentType::None, {.fullscreen = fullscreen}, 0
+    );
+  };
+  CHECK(!resolve(false).mouse.defaults.sensitivityMultiplier.has_value());
+  CHECK(!resolve(false).mouse.defaults.rawSensitivityMultiplier.has_value());
+  CHECK(resolve(false).mouse.defaults.sensitivityWarning.value_or(true));
+  WindowRule base;
+  base.mouse.defaults.sensitivityMultiplier = 0.8;
+  base.mouse.defaults.rawSensitivityMultiplier = 0.5;
+  base.mouse.defaults.wheelMultiplier = 0.25;
+  base.mouse.defaults.sensitivityWarning = false;
+  config.windowRules.push_back(base);
+  WindowRule camera;
+  camera.matchFullscreen = true;
+  camera.mouse.defaults.rawSensitivityMultiplier = 2.0;
+  camera.mouse.defaults.sensitivityWarning = true;
+  config.windowRules.push_back(camera);
+  CHECK_EQ(resolve(true).mouse.defaults.sensitivityMultiplier.value_or(1.0), 0.8);
+  CHECK_EQ(resolve(true).mouse.defaults.rawSensitivityMultiplier.value_or(1.0), 2.0);
+  CHECK_EQ(resolve(false).mouse.defaults.rawSensitivityMultiplier.value_or(1.0), 0.5);
+  CHECK_EQ(resolve(true).mouse.defaults.wheelMultiplier.value_or(1.0), 0.25);
+  CHECK(resolve(true).mouse.defaults.sensitivityWarning.value_or(false));
+  CHECK(!resolve(false).mouse.defaults.sensitivityWarning.value_or(true));
+  WindowRule reset;
+  reset.mouse.defaults.sensitivityMultiplier = 1.0;
+  reset.mouse.defaults.wheelMultiplier = 0.0;
+  config.windowRules.push_back(reset);
+  config.windowRules.emplace_back();
+  CHECK_EQ(resolve(true).mouse.defaults.sensitivityMultiplier.value_or(0.0), 1.0);
+  CHECK_EQ(resolve(true).mouse.defaults.rawSensitivityMultiplier.value_or(1.0), 2.0);
+  CHECK(resolve(true).mouse.defaults.sensitivityWarning.value_or(false));
+  CHECK_EQ(resolve(true).mouse.defaults.wheelMultiplier.value_or(1.0), 0.0);
+  config.windowRules.clear();
+  CHECK(!resolve(true).mouse.defaults.sensitivityMultiplier.has_value());
+  CHECK(!resolve(true).mouse.defaults.rawSensitivityMultiplier.has_value());
+}
+
+UMBRIEL_TEST(matchingWindowRulesRetainIndependentMouseDeviceOverrides) {
+  Config config;
+  WindowRule game;
+  game.appIdPatterns.add("^game$");
+  game.mouse.defaults.wheelMultiplier = 0.5;
+  umbriel::MouseDeviceRule first;
+  first.name = "First Mouse";
+  first.settings.rawSensitivityMultiplier = 0.01;
+  game.mouse.devices.push_back(first);
+  config.windowRules.push_back(game);
+  WindowRule focused;
+  focused.matchFocused = true;
+  umbriel::MouseDeviceRule second;
+  second.name = "Second Mouse";
+  second.settings.rawSensitivityMultiplier = 0.05;
+  focused.mouse.devices.push_back(second);
+  config.windowRules.push_back(focused);
+  const auto resolved =
+      umbriel::resolveWindowRules(config, "game", "menu", std::nullopt, ContentType::None, {.focused = true}, 0);
+  CHECK_EQ(resolved.mouse.forDevice("First Mouse").rawSensitivityMultiplier.value_or(1.0), 0.01);
+  CHECK_EQ(resolved.mouse.forDevice("Second Mouse").rawSensitivityMultiplier.value_or(1.0), 0.05);
+  CHECK_EQ(resolved.mouse.forDevice("Second Mouse").wheelMultiplier.value_or(1.0), 0.5);
+  CHECK(!resolved.mouse.forDevice("Other Mouse").rawSensitivityMultiplier.has_value());
+}
