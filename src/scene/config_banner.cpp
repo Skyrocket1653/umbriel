@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <format>
 #include <string>
+#include <utility>
 #include <vector>
 #include <wayland-server-core.h>
 
@@ -71,7 +72,7 @@ namespace umbriel {
     }
   }
 
-  void ConfigBanner::show(const std::vector<ConfigDiagnostic>& diagnostics) {
+  void ConfigBanner::show(const std::vector<ConfigDiagnostic>& diagnostics, std::string heading, std::string footer) {
     // Disarm any pending auto-hide.
     if (m_hideTimer != nullptr) {
       wl_event_source_remove(m_hideTimer);
@@ -83,6 +84,8 @@ namespace umbriel {
       return;
     }
 
+    m_heading = std::move(heading);
+    m_footer = std::move(footer);
     m_lastDiagnostics = diagnostics;
     m_persistent = std::ranges::any_of(diagnostics, [](const ConfigDiagnostic& d) {
       return d.severity == ConfigDiagnostic::Severity::Error;
@@ -104,6 +107,8 @@ namespace umbriel {
       m_tree = nullptr;
     }
     m_lastDiagnostics.clear();
+    m_heading.clear();
+    m_footer.clear();
     m_persistent = false;
     if (m_hideTimer != nullptr) {
       wl_event_source_remove(m_hideTimer);
@@ -165,9 +170,9 @@ namespace umbriel {
     const std::string mutedColor = rgbaHex(colors.textMuted);
 
     const int total = static_cast<int>(ordered.size());
-    const std::string heading = total == 1
-        ? std::string(hasError ? "Configuration error" : "Configuration warning")
-        : std::format("{} configuration {}", total, hasError ? "problems" : "warnings");
+    const std::string heading = !m_heading.empty() ? m_heading
+        : total == 1 ? std::string(hasError ? "Configuration error" : "Configuration warning")
+                     : std::format("{} configuration {}", total, hasError ? "problems" : "warnings");
 
     // Build pango markup: heading, a blank spacer, one bulleted entry per
     // diagnostic, then a muted footer.
@@ -192,8 +197,9 @@ namespace umbriel {
     if (total > shown) {
       footer += std::format("+{} more \xc2\xb7 ", total - shown);
     }
-    footer +=
-        hasError ? "configuration not applied \xc2\xb7 run `umbriel config validate`" : "run `umbriel config validate`";
+    footer += !m_footer.empty() ? m_footer
+        : hasError              ? "configuration not applied \xc2\xb7 run `umbriel config validate`"
+                                : "run `umbriel config validate`";
     markup += std::format("\n\n<span foreground='{}'>{}</span>", mutedColor, escapeMarkup(footer));
 
     // Transparent background: the panel rect behind provides the surface.
