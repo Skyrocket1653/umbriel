@@ -3,6 +3,7 @@
 #include "config/config_diag.h"
 #include "config/effects.h"
 #include "config/keybind_parse.h"
+#include "config/mouse.h"
 #include "config/value_parse.h"
 #include "config/window_position.h"
 #include "core/animation.h"
@@ -500,6 +501,7 @@ namespace umbriel {
     // Lets a modal dialog hang on its parent's frame (true, the default) or opens it as an ordinary window (false).
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
+    MouseRuleSet mouse;
     // Multiplies touchpad scrolling sent to matching windows, on top of `[input.touchpad] scroll_factor`.
     std::optional<double> touchpadScrollFactor;
     // Whether matching windows may activate client-requested keyboard shortcut inhibition (true by default).
@@ -586,6 +588,7 @@ namespace umbriel {
           && focusOnActivate == other.focusOnActivate
           && attachToParent == other.attachToParent
           && confinePointer == other.confinePointer
+          && mouse == other.mouse
           && touchpadScrollFactor == other.touchpadScrollFactor
           && allowShortcutsInhibit == other.allowShortcutsInhibit
           && backgroundRender == other.backgroundRender
@@ -644,6 +647,7 @@ namespace umbriel {
     std::optional<bool> focusOnActivate;
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
+    MouseRuleSet mouse;
     std::optional<double> touchpadScrollFactor;
     std::optional<bool> allowShortcutsInhibit;
     std::optional<bool> backgroundRender;
