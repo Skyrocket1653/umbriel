@@ -2,6 +2,7 @@
 
 #include "scene/surface_shadow.h"
 
+#include <string>
 #include <vector>
 
 struct wl_event_source;
@@ -11,7 +12,7 @@ namespace umbriel {
   struct ConfigDiagnostic;
   class Server;
 
-  // Configuration diagnostics panel, drawn with the same chrome as the
+  // Diagnostics panel, drawn with the same chrome as the
   // cheatsheet and the session-quit confirmation: shadow, severity-colored
   // border, rounded background. Errors stay up, warnings auto-hide.
   class ConfigBanner {
@@ -22,7 +23,7 @@ namespace umbriel {
     ConfigBanner(const ConfigBanner&) = delete;
     ConfigBanner& operator=(const ConfigBanner&) = delete;
 
-    void show(const std::vector<ConfigDiagnostic>& diagnostics);
+    void show(const std::vector<ConfigDiagnostic>& diagnostics, std::string heading = {}, std::string footer = {});
     void hide();
     bool visible() const { return m_tree != nullptr; }
     void relayout();
@@ -36,6 +37,8 @@ namespace umbriel {
     SurfaceShadow m_shadow;
     wl_event_source* m_hideTimer = nullptr;
     std::vector<ConfigDiagnostic> m_lastDiagnostics;
+    std::string m_heading;
+    std::string m_footer;
     bool m_persistent = false; // true when errors present
   };
 

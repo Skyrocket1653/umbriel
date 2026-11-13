@@ -5,6 +5,7 @@
 #include "config/store.h"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <limits>
 #include <optional>
@@ -17,6 +18,98 @@
 namespace umbriel {
 
   namespace {
+
+    template <typename T> registry::Field<T> sensitivityField(std::string_view key, std::optional<double> T::* member) {
+      return registry::custom<T>(
+          key, registry::KeyDescription("float"),
+          [member](const toml::node& node, const std::string& path, T& target, registry::ReadContext&) {
+            const auto value = node.value<double>();
+            if (!value || !std::isfinite(*value)) {
+              warnAt(node.source(), "ignoring {} (expected finite number)", path);
+              return;
+            }
+            target.*member = *value;
+          },
+          [member](const T& rule) { return registry::detail::toJson(rule.*member); }
+      );
+    }
+
+    const registry::Fields<MouseSettings>& mouseSettingFields() {
+      using M = MouseSettings;
+      static const registry::Fields<M> fields{
+          sensitivityField("sensitivity_multiplier", &M::sensitivityMultiplier),
+          sensitivityField("raw_sensitivity_multiplier", &M::rawSensitivityMultiplier),
+          sensitivityField("wheel_multiplier", &M::wheelMultiplier),
+          registry::boolean("sensitivity_warning", &M::sensitivityWarning),
+      };
+      return fields;
+    }
+
+    template <typename T> registry::Fields<T> projectedMouseFields(MouseSettings T::* member) {
+      registry::Fields<T> fields;
+      for (const auto& field : mouseSettingFields()) {
+        const auto* leaf = &field;
+        fields.push_back({
+            .key = leaf->key,
+            .read = [leaf, member](
+                        Section& section, T& target, registry::ReadContext& context
+                    ) { return leaf->read(section, target.*member, context); },
+            .describe = [leaf, member](
+                            const T& defaults, const std::string& path, registry::Descriptions& out
+                        ) { leaf->describe(defaults.*member, path, out); },
+        });
+      }
+      return fields;
+    }
+
+    const registry::Fields<MouseRuleSet>& mouseRuleFields() {
+      using D = MouseDeviceRule;
+      using M = MouseRuleSet;
+      static const registry::Fields<D> device = [] {
+        auto fields = projectedMouseFields(&D::settings);
+        fields.insert(
+            fields.begin(),
+            registry::checked<D>(
+                "name", registry::KeyDescription("string"),
+                [](const toml::node& node, const std::string& path, D& target, registry::ReadContext&) {
+                  const auto name = node.value<std::string>();
+                  if (!name || name->empty()) {
+                    warnAt(node.source(), "ignoring {} (expected non-empty device name)", path);
+                    return false;
+                  }
+                  target.name = *name;
+                  return true;
+                }
+            )
+        );
+        return fields;
+      }();
+      static const registry::Fields<M> fields = [] {
+        auto result = projectedMouseFields(&M::defaults);
+        result.push_back(
+            registry::rules(
+                "device", &M::devices, device, registry::Shape::Warning,
+                [](Section& keys, const toml::node& entry, D& target, M& parent, registry::ReadContext&,
+                   bool accepted) {
+                  if (!accepted) {
+                    return false;
+                  }
+                  if (target.name.empty()) {
+                    warnAt(entry.source(), "ignoring {} (missing non-empty device name)", keys.name());
+                    return false;
+                  }
+                  if (std::ranges::any_of(parent.devices, [&](const D& other) { return other.name == target.name; })) {
+                    warnAt(entry.source(), "ignoring {} (duplicate device name '{}')", keys.name(), target.name);
+                    return false;
+                  }
+                  return true;
+                }
+            )
+        );
+        return result;
+      }();
+      return fields;
+    }
 
     const registry::Fields<ScratchpadConfig>& scratchpadFields() {
       static const registry::Fields<ScratchpadConfig> fields{
@@ -234,6 +327,7 @@ namespace umbriel {
       };
       static const registry::Fields<W> fields{
           registry::table<W>("match", self, match, rejectUnlessTable<W>),
+          registry::table("mouse", &W::mouse, mouseRuleFields()),
           registry::table<W>("border", self, border),
           registry::table<W>("xwayland", self, xwayland),
           boolean("default_floating", &W::defaultFloating),

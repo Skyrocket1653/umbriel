@@ -267,6 +267,7 @@ namespace umbriel {
   }
 
   void Cursor::handleConstraintDestroy() {
+    resetMotionRemainders();
     View* view = View::fromSurface(wlr_surface_get_root_surface(m_activeConstraint->surface));
     const bool hadResume = view != nullptr && view->m_xwaylandPointerResume.has_value();
     const bool keepResume = hadResume
@@ -298,6 +299,7 @@ namespace umbriel {
     if (m_activeConstraint == constraint) {
       return;
     }
+    resetMotionRemainders();
 
     if (m_activeConstraint != nullptr) {
       rememberLockedXwaylandPointer();

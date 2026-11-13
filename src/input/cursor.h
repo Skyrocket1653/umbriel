@@ -1,4 +1,5 @@
 #pragma once
+#include "input/motion_scale.h"
 #include "layout/drop_target.h"
 #include "scene/ssd_frame_geometry.h"
 #include "view/window_region.h"
@@ -7,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 #include <wayland-server-core.h>
@@ -311,6 +313,12 @@ namespace umbriel {
     static void onToolDestroy(wl_listener* listener, void* data);
     static void onToolSetCursor(wl_listener* listener, void* data);
 
+    void warnMouseSensitivity(
+        View* view, bool showWarning, std::string_view stream, bool nonFinite, std::string_view deviceName
+    );
+    void resetMotionRemainders();
+    void prepareMotionDevice(wlr_input_device* device);
+    static void onMotionDeviceDestroy(wl_listener* listener, void* data);
     void handleMotion(void* data);
     void handleMotionAbsolute(void* data);
     void handleButton(void* data);
@@ -510,6 +518,12 @@ namespace umbriel {
     wl_event_source* m_sceneRefocusIdle = nullptr;
     bool m_compositorOwnsCursor = false;
     bool m_cursorHidden = false;
+    std::optional<uint64_t> m_lastSensitivityWarningMs;
+    RelativeMotionRemainder m_relativePointerRemainder;
+    RelativeMotionRemainder m_relativeRawRemainder;
+    WheelMotionRemainder m_applicationWheelRemainder[2];
+    wlr_input_device* m_motionRemainderDevice = nullptr;
+    wl_listener m_motionDeviceDestroy{};
     std::string m_compositorCursorName;
     // What the focused client last asked the cursor to be, replayed when a
     // compositor override ends. Wayland scopes a cursor to the pointer focus,

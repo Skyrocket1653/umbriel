@@ -5,6 +5,7 @@
 #include "input/event_time.h"
 #include "input/gestures.h"
 #include "input/input_capture.h"
+#include "input/motion_scale.h"
 #include "input/seat.h"
 #include "input/toplevel_drag.h"
 #include "input/xcursor_matcher.h"
@@ -16,6 +17,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/cheatsheet.h"
+#include "scene/config_banner.h"
 #include "scene/hint_rect.h"
 #include "scene/quit_confirm.h"
 #include "scene/ssd_frame.h"
@@ -194,6 +196,7 @@ namespace umbriel {
   }
 
   Cursor::~Cursor() {
+    resetMotionRemainders();
     if (m_dropZoneDwellTimer != nullptr) {
       wl_event_source_remove(m_dropZoneDwellTimer);
     }
@@ -243,7 +246,12 @@ namespace umbriel {
   }
 
   void Cursor::attachInputDevice(wlr_input_device* device) { wlr_cursor_attach_input_device(m_cursor, device); }
-  void Cursor::resetWheelAccumulation() { m_wheelAccum[0] = m_wheelAccum[1] = 0; }
+  void Cursor::resetWheelAccumulation() {
+    m_wheelAccum[0] = m_wheelAccum[1] = 0;
+    for (auto& remainder : m_applicationWheelRemainder) {
+      remainder.reset();
+    }
+  }
 
   void Cursor::handleDataDragStarted() { updateDataDragEdgeScroll(); }
   void Cursor::handleDataDragEnded() { cancelDataDragEdgeScroll(); }
@@ -976,6 +984,7 @@ namespace umbriel {
   }
 
   void Cursor::notePointerFocusChange(wlr_surface* newSurface) {
+    resetMotionRemainders();
     if (newSurface != nullptr
         && m_clientCursorOwner != nullptr
         && wl_resource_get_client(newSurface->resource) == m_clientCursorOwner) {
@@ -1511,6 +1520,58 @@ namespace umbriel {
     self->handleFrame();
   }
 
+  void Cursor::resetMotionRemainders() {
+    m_relativePointerRemainder.reset();
+    m_relativeRawRemainder.reset();
+    for (auto& remainder : m_applicationWheelRemainder) {
+      remainder.reset();
+    }
+    if (m_motionRemainderDevice != nullptr) {
+      wl_list_remove(&m_motionDeviceDestroy.link);
+      m_motionRemainderDevice = nullptr;
+    }
+  }
+
+  void Cursor::prepareMotionDevice(wlr_input_device* device) {
+    if (m_motionRemainderDevice == device) {
+      return;
+    }
+    resetMotionRemainders();
+    m_motionRemainderDevice = device;
+    m_motionDeviceDestroy.notify = onMotionDeviceDestroy;
+    wl_signal_add(&device->events.destroy, &m_motionDeviceDestroy);
+  }
+
+  void Cursor::onMotionDeviceDestroy(wl_listener* listener, void* /*data*/) {
+    Cursor* self = wl_container_of(listener, self, m_motionDeviceDestroy);
+    self->resetMotionRemainders();
+  }
+
+  void Cursor::warnMouseSensitivity(
+      View* view, bool showWarning, std::string_view stream, bool nonFinite, std::string_view deviceName
+  ) {
+    const uint64_t now = m_server->uptimeMs();
+    if (m_lastSensitivityWarningMs && now - *m_lastSensitivityWarningMs < 10000) {
+      return;
+    }
+    m_lastSensitivityWarningMs = now;
+    const std::string message = std::format(
+        "{} sensitivity for app_id='{}', device='{}' produced {}. Check mouse.sensitivity_multiplier, "
+        "mouse.raw_sensitivity_multiplier, and mouse.wheel_multiplier.",
+        stream, view != nullptr && view->appId() != nullptr ? view->appId() : "unknown", deviceName,
+        nonFinite ? "infinity or NaN; non-finite movement was discarded"
+                  : "movement outside Wayland's numeric range; oversized movement was limited"
+    );
+    kLog.warn("input: {}", message);
+    if (ConfigBanner* banner = m_server->configBanner(); showWarning && banner != nullptr && !banner->visible()) {
+      banner->show(
+          {{.severity = ConfigDiagnostic::Severity::Warning, .message = message, .file = {}}},
+          "Mouse sensitivity warning",
+          "Set sensitivity_warning = false for this mouse in the window rule to hide this alert."
+      );
+    }
+  }
+
   void Cursor::handleMotion(void* data) {
     auto* event = static_cast<wlr_pointer_motion_event*>(data);
     noteActivity();
@@ -1521,9 +1582,11 @@ namespace umbriel {
         if (capture->captureMotion(
                 event->time_msec, m_cursor->x, m_cursor->y, event->delta_x, event->delta_y, canCaptureInput()
             )) {
+          resetMotionRemainders();
           return;
         }
       } else if ((capture->capabilities() & 2U) != 0) {
+        resetMotionRemainders();
         return;
       }
     }
@@ -1534,20 +1597,47 @@ namespace umbriel {
     if (m_activeConstraint != nullptr && !constraintSurfaceActive()) {
       clearConstraint();
     }
+    wlr_surface* focused = m_server->seat()->wlr()->pointer_state.focused_surface;
+    View* view = focused != nullptr ? View::fromSurface(wlr_surface_get_root_surface(focused)) : nullptr;
+    const ResolvedWindowRule* rule = view != nullptr ? &view->resolvedRules() : nullptr;
+    const std::string_view deviceName = event->pointer->base.name != nullptr ? event->pointer->base.name : "";
+    const MouseSettings mouse = rule != nullptr ? rule->mouse.forDevice(deviceName) : MouseSettings{};
+    const double pointerFactor = mouse.sensitivityMultiplier.value_or(1.0);
+    const double rawFactor = mouse.rawSensitivityMultiplier.value_or(1.0);
+    const bool showWarning = mouse.sensitivityWarning.value_or(true);
+    const ScaledPointerInput motion = scalePointerInput(
+        event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy, pointerFactor, rawFactor
+    );
     // A retained X activation is not permission to receive mouse deltas. This also covers an old implicit
     // button grab, whose releases still need to reach the original surface after keyboard focus moves.
-    if (pointerInputAllowed(m_server->seat()->wlr()->pointer_state.focused_surface)) {
+    if (focused != nullptr && pointerInputAllowed(focused)) {
+      prepareMotionDevice(&event->pointer->base);
+      // Xwayland also uses accelerated relative motion for pointer-warp emulation.
+      const ScaledMotion& accelerated = motion.pointer;
+      const ScaledMotion& raw = motion.raw;
+      const auto issue = std::max(accelerated.issue, raw.issue);
+      if (issue != MotionScaleIssue::None) {
+        warnMouseSensitivity(view, showWarning, "Relative input", issue == MotionScaleIssue::NonFinite, deviceName);
+      }
+      const ScaledMotion encodedPointer = m_relativePointerRemainder.encode(accelerated, pointerFactor);
+      const ScaledMotion encodedRaw = m_relativeRawRemainder.encode(raw, rawFactor);
       wlr_relative_pointer_manager_v1_send_relative_motion(
           m_server->relativePointerManager(), m_server->seat()->wlr(), static_cast<uint64_t>(event->time_msec) * 1000,
-          event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy
+          encodedPointer.dx, encodedPointer.dy, encodedRaw.dx, encodedRaw.dy
       );
+    } else {
+      resetMotionRemainders();
     }
     if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
       return;
     }
 
-    double dx = event->delta_x;
-    double dy = event->delta_y;
+    const ScaledMotion& pointer = motion.pointer;
+    if (pointer.issue != MotionScaleIssue::None) {
+      warnMouseSensitivity(view, showWarning, "Pointer", pointer.issue == MotionScaleIssue::NonFinite, deviceName);
+    }
+    double dx = pointer.dx;
+    double dy = pointer.dy;
     if (m_activeConstraint != nullptr
         && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED
         && !confineDelta(&dx, &dy)) {
@@ -1563,6 +1653,7 @@ namespace umbriel {
   }
 
   void Cursor::handleMotionAbsolute(void* data) {
+    resetMotionRemainders();
     auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
     noteActivity();
     m_server->notifyInputActivity();
@@ -1610,6 +1701,7 @@ namespace umbriel {
   void Cursor::handleButton(void* data) {
     auto* event = static_cast<wlr_pointer_button_event*>(data);
     if (InputCapture* capture = m_server->inputCapture(); capture != nullptr && (capture->capabilities() & 2U) != 0) {
+      resetMotionRemainders();
       m_server->notifyIdleActivity();
       if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         m_server->pendingReleases().forgetPress(&event->pointer->base, event->button);
@@ -2120,6 +2212,7 @@ namespace umbriel {
   void Cursor::handleAxis(void* data) {
     auto* event = static_cast<wlr_pointer_axis_event*>(data);
     if (InputCapture* capture = m_server->inputCapture(); capture != nullptr && (capture->capabilities() & 2U) != 0) {
+      resetMotionRemainders();
       m_server->notifyIdleActivity();
       if (m_server->physicalInputDevice(&event->pointer->base)) {
         capture->captureAxis(event->time_msec, event->orientation, event->delta, event->delta_discrete);
@@ -2163,6 +2256,9 @@ namespace umbriel {
       LayerSurface* layer = nullptr;
       m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
       if (!overviewPassthroughLayer(layer)) {
+        for (auto& remainder : m_applicationWheelRemainder) {
+          remainder.reset();
+        }
         if (!overview->interactive()) {
           return;
         }
@@ -2211,19 +2307,54 @@ namespace umbriel {
     const int orientation = isVertical ? 0 : 1;
     // An unmodified wheel over a tab bar steps through its tabs.
     if (!armed && effective == 0 && scrollTabBar(event, orientation)) {
+      m_applicationWheelRemainder[orientation].reset();
       return;
     }
     if (!armed) {
       m_wheelAccum[orientation] = 0;
       wlr_surface* focused = m_server->seat()->wlr()->pointer_state.focused_surface;
       View* view = focused != nullptr ? View::fromSurface(wlr_surface_get_root_surface(focused)) : nullptr;
-      const double scale = touchpadScrollFactor(event->pointer, isVertical, view);
-      wlr_seat_pointer_notify_axis(
-          m_server->seat()->wlr(), event->time_msec, event->orientation, event->delta * scale, event->delta_discrete,
-          event->source, event->relative_direction
-      );
+      const bool wheel =
+          event->source == WL_POINTER_AXIS_SOURCE_WHEEL || event->source == WL_POINTER_AXIS_SOURCE_WHEEL_TILT;
+      if (wheel && focused != nullptr) {
+        prepareMotionDevice(&event->pointer->base);
+        const ResolvedWindowRule* rule = view != nullptr ? &view->resolvedRules() : nullptr;
+        const std::string_view deviceName = event->pointer->base.name != nullptr ? event->pointer->base.name : "";
+        const MouseSettings mouse = rule != nullptr ? rule->mouse.forDevice(deviceName) : MouseSettings{};
+        const double multiplier = mouse.wheelMultiplier.value_or(1.0);
+        const ScaledWheelMotion motion =
+            m_applicationWheelRemainder[orientation].scale(event->delta, event->delta_discrete, multiplier);
+        if (motion.issue != MotionScaleIssue::None) {
+          warnMouseSensitivity(
+              view, mouse.sensitivityWarning.value_or(true), "Mouse wheel", motion.issue == MotionScaleIssue::NonFinite,
+              deviceName
+          );
+        }
+        const bool stopped = event->delta == 0.0 && event->delta_discrete == 0;
+        if (motion.delta != 0.0 || motion.value120 != 0 || stopped) {
+          auto direction = event->relative_direction;
+          if (multiplier < 0.0) {
+            direction = direction == WL_POINTER_AXIS_RELATIVE_DIRECTION_IDENTICAL
+                ? WL_POINTER_AXIS_RELATIVE_DIRECTION_INVERTED
+                : WL_POINTER_AXIS_RELATIVE_DIRECTION_IDENTICAL;
+          }
+          wlr_seat_pointer_notify_axis(
+              m_server->seat()->wlr(), event->time_msec, event->orientation, motion.delta, motion.value120,
+              event->source, direction
+          );
+        }
+      } else {
+        m_applicationWheelRemainder[orientation].reset();
+        const double scale = touchpadScrollFactor(event->pointer, isVertical, view);
+        wlr_seat_pointer_notify_axis(
+            m_server->seat()->wlr(), event->time_msec, event->orientation, event->delta * scale, event->delta_discrete,
+            event->source, event->relative_direction
+        );
+      }
       return;
     }
+
+    m_applicationWheelRemainder[orientation].reset();
 
     // Accumulate normalized notches.
     const double notches =
