@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 #include <wayland-server-core.h>
@@ -311,6 +312,9 @@ namespace umbriel {
     static void onToolDestroy(wl_listener* listener, void* data);
     static void onToolSetCursor(wl_listener* listener, void* data);
 
+    void warnMouseSensitivity(
+        View* view, bool showWarning, std::string_view stream, bool nonFinite, std::string_view deviceName
+    );
     void handleMotion(void* data);
     void handleMotionAbsolute(void* data);
     void handleButton(void* data);
@@ -510,6 +514,7 @@ namespace umbriel {
     wl_event_source* m_sceneRefocusIdle = nullptr;
     bool m_compositorOwnsCursor = false;
     bool m_cursorHidden = false;
+    std::optional<uint64_t> m_lastSensitivityWarningMs;
     std::string m_compositorCursorName;
     // What the focused client last asked the cursor to be, replayed when a
     // compositor override ends. Wayland scopes a cursor to the pointer focus,
