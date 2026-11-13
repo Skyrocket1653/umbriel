@@ -364,6 +364,19 @@ default_pinned = true
 # match.app_id = "^steam_app_.*$"
 # confine_pointer = true
 
+# Scale game menu pointer movement and relative camera input independently (any finite number; default 1.0).
+# [[window_rule]]
+# match.app_id = "^steam_app_.*$"
+# mouse.sensitivity_multiplier = 0.8
+# mouse.raw_sensitivity_multiplier = 0.5
+# mouse.wheel_multiplier = 0.5 # Scale application wheel scrolling; touchpads use touchpad_scroll_factor.
+# mouse.sensitivity_warning = false # Hide runtime GUI warnings; keep logs and numeric checks.
+# Per-device values inherit the defaults above; names match libinput list-devices exactly.
+# mouse.device = [
+#   { name = "FIRST MOUSE NAME", raw_sensitivity_multiplier = 0.01, wheel_multiplier = 0.5 },
+#   { name = "SECOND MOUSE NAME", raw_sensitivity_multiplier = 0.05 },
+# ]
+
 # Scroll more slowly on the touchpad in one application.
 # [[window_rule]]
 # match.app_id = "^chromium$"
