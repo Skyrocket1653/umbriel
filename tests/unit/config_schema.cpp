@@ -413,3 +413,114 @@ UMBRIEL_TEST(shortcutsInhibitionRuleParsesAndParticipatesInReloads) {
   }));
   CHECK(std::ranges::none_of(invalid.messages, [](const auto& message) { return message.contains("unknown key"); }));
 }
+
+UMBRIEL_TEST(mouseSensitivityRulesParseAndParticipateInReloads) {
+  const auto configured = load(
+      toml::parse("[[window_rule]]\nmouse.sensitivity_multiplier = 0.8\nmouse.raw_sensitivity_multiplier = 0.5\n")
+  );
+  CHECK(configured.messages.empty());
+  CHECK_EQ(configured.config.windowRules.at(0).mouse.defaults.sensitivityMultiplier.value_or(1.0), 0.8);
+  CHECK_EQ(configured.config.windowRules.at(0).mouse.defaults.rawSensitivityMultiplier.value_or(1.0), 0.5);
+  for (const std::string definition : {
+           "mouse = { sensitivity_multiplier = 0.8, raw_sensitivity_multiplier = 0.5 }\n",
+           "[window_rule.mouse]\nsensitivity_multiplier = 0.8\nraw_sensitivity_multiplier = 0.5\n",
+       }) {
+    const auto nested = load(toml::parse("[[window_rule]]\n" + definition));
+    CHECK(nested.messages.empty());
+    CHECK(nested.config.windowRules == configured.config.windowRules);
+  }
+  const auto schema = umbriel::registry::describeConfig(umbriel::Config{});
+  for (const std::string_view key :
+       {"window_rule[].mouse.sensitivity_multiplier", "window_rule[].mouse.raw_sensitivity_multiplier",
+        "window_rule[].mouse.sensitivity_warning", "window_rule[].mouse.wheel_multiplier"}) {
+    CHECK(std::ranges::any_of(schema, [&](const auto& field) { return field.path == key; }));
+  }
+  for (const std::string key :
+       {"mouse.sensitivity_multiplier", "mouse.raw_sensitivity_multiplier", "mouse.wheel_multiplier"}) {
+    const auto omitted = load(toml::parse("[[window_rule]]\n"));
+    const auto explicitDefault = load(toml::parse("[[window_rule]]\n" + key + " = 1\n"));
+    CHECK(explicitDefault.messages.empty());
+    CHECK(omitted.config.windowRules != explicitDefault.config.windowRules);
+    for (const std::string value : {"0", "-1", "0.001", "10.01", "100", "1e308"}) {
+      const auto valid = load(toml::parse("[[window_rule]]\n" + key + " = " + value + "\n"));
+      CHECK(valid.messages.empty());
+      const auto& rule = valid.config.windowRules.at(0);
+      const auto factor = key == "mouse.sensitivity_multiplier" ? rule.mouse.defaults.sensitivityMultiplier
+          : key == "mouse.raw_sensitivity_multiplier"           ? rule.mouse.defaults.rawSensitivityMultiplier
+                                                                : rule.mouse.defaults.wheelMultiplier;
+      CHECK_EQ(factor.value_or(1.0), std::stod(value));
+    }
+    for (const std::string value : {"inf", "-inf", "nan", "\"fast\""}) {
+      const auto invalid = load(toml::parse("[[window_rule]]\n" + key + " = " + value + "\n"));
+      CHECK(std::ranges::any_of(invalid.messages, [&](const auto& message) { return message.contains(key); }));
+      CHECK(!invalid.config.windowRules.at(0).mouse.defaults.sensitivityMultiplier.has_value());
+      CHECK(!invalid.config.windowRules.at(0).mouse.defaults.rawSensitivityMultiplier.has_value());
+      CHECK(!invalid.config.windowRules.at(0).mouse.defaults.wheelMultiplier.has_value());
+    }
+  }
+}
+
+UMBRIEL_TEST(mouseSensitivityWarningCanBeDisabledAndReloaded) {
+  const auto omitted = load(toml::parse("[[window_rule]]\n"));
+  CHECK(omitted.config.windowRules.at(0).mouse.defaults.sensitivityWarning.value_or(true));
+  const auto disabled = load(toml::parse("[[window_rule]]\nmouse.sensitivity_warning = false\n"));
+  CHECK(disabled.messages.empty());
+  CHECK(!disabled.config.windowRules.at(0).mouse.defaults.sensitivityWarning.value_or(true));
+  CHECK(omitted.config.windowRules != disabled.config.windowRules);
+  const auto enabled = load(toml::parse("[[window_rule]]\nmouse.sensitivity_warning = true\n"));
+  CHECK(enabled.messages.empty());
+  CHECK(enabled.config.windowRules.at(0).mouse.defaults.sensitivityWarning.value_or(false));
+  CHECK(enabled.config.windowRules != disabled.config.windowRules);
+}
+
+UMBRIEL_TEST(mouseDeviceArraysAndNestedTablesConfigureTheSameWindowRule) {
+  const auto inlineRules = load(
+      toml::parse(
+          "[[window_rule]]\nmouse.raw_sensitivity_multiplier = 1.0\nmouse.wheel_multiplier = 0.5\n"
+          "mouse.device = [\n"
+          "{ name = \"First Mouse\", raw_sensitivity_multiplier = 0.01, sensitivity_warning = false },\n"
+          "{ name = \"Second Mouse\", raw_sensitivity_multiplier = 0.05, wheel_multiplier = 2.0 }\n]\n"
+      )
+  );
+  CHECK(inlineRules.messages.empty());
+  const auto tables = load(
+      toml::parse(
+          "[[window_rule]]\nmouse.raw_sensitivity_multiplier = 1.0\nmouse.wheel_multiplier = 0.5\n"
+          "[[window_rule.mouse.device]]\nname = \"First Mouse\"\nraw_sensitivity_multiplier = 0.01\n"
+          "sensitivity_warning = false\n"
+          "[[window_rule.mouse.device]]\nname = \"Second Mouse\"\nraw_sensitivity_multiplier = 0.05\nwheel_multiplier "
+          "= 2.0\n"
+      )
+  );
+  CHECK(tables.messages.empty());
+  CHECK(inlineRules.config.windowRules == tables.config.windowRules);
+  const auto& mouse = inlineRules.config.windowRules.at(0).mouse;
+  CHECK_EQ(mouse.devices.size(), size_t{2});
+  CHECK_EQ(mouse.forDevice("First Mouse").rawSensitivityMultiplier.value_or(1.0), 0.01);
+  CHECK_EQ(mouse.forDevice("First Mouse").wheelMultiplier.value_or(1.0), 0.5);
+  CHECK(!mouse.forDevice("First Mouse").sensitivityWarning.value_or(true));
+  CHECK_EQ(mouse.forDevice("Second Mouse").wheelMultiplier.value_or(1.0), 2.0);
+  CHECK_EQ(mouse.forDevice("Other Mouse").rawSensitivityMultiplier.value_or(0.0), 1.0);
+  const auto schema = umbriel::registry::describeConfig(umbriel::Config{});
+  for (const std::string_view key :
+       {"window_rule[].mouse.device[].name", "window_rule[].mouse.device[].sensitivity_multiplier",
+        "window_rule[].mouse.device[].raw_sensitivity_multiplier", "window_rule[].mouse.device[].wheel_multiplier",
+        "window_rule[].mouse.device[].sensitivity_warning"}) {
+    CHECK(std::ranges::any_of(schema, [&](const auto& field) { return field.path == key; }));
+  }
+}
+
+UMBRIEL_TEST(mouseDeviceOverridesRequireUniqueNonemptyNamesWithinEachWindowRule) {
+  const auto loaded = load(
+      toml::parse(
+          "[[window_rule]]\nmouse.device = ["
+          "{ name = \"First Mouse\", wheel_multiplier = 0.5 },"
+          "{ name = \"First Mouse\", wheel_multiplier = 2.0 },"
+          "{ name = \"\", wheel_multiplier = 2.0 },"
+          "{ raw_sensitivity_multiplier = 0.1 } ]\n"
+      )
+  );
+  CHECK(!loaded.messages.empty());
+  CHECK_EQ(loaded.config.windowRules.at(0).mouse.devices.size(), size_t{1});
+  CHECK_EQ(loaded.config.windowRules.at(0).mouse.forDevice("First Mouse").wheelMultiplier.value_or(1.0), 0.5);
+}
