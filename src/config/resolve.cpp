@@ -350,6 +350,7 @@ namespace umbriel {
       if (rule.confinePointer) {
         resolved.confinePointer = rule.confinePointer;
       }
+      resolved.mouse.overlay(rule.mouse);
       if (rule.touchpadScrollFactor) {
         resolved.touchpadScrollFactor = rule.touchpadScrollFactor;
       }
