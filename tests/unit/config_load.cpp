@@ -3323,6 +3323,7 @@ tap_button_map = "left_middle_right"
 [input.mouse]
 left_handed = true
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
+wake_on_motion = false
 sensitivity = 0.25
 scroll_button = "MouseForward"
 scroll_button_lock = true
@@ -3353,6 +3354,7 @@ tap_button_map = "left_right_middle"
 name = "Acme Gaming Mouse"
 accel_profile = "flat"
 sensitivity = -0.5
+wake_on_motion = true
 scroll_button = "MouseBack"
 scroll_button_lock = false
 )");
@@ -3368,6 +3370,7 @@ scroll_button_lock = false
   CHECK_EQ(input.mouse.accelProfile->step, 0.2);
   CHECK_EQ(input.mouse.accelProfile->points, std::vector<double>({0.0, 0.5, 1.0, 2.0}));
   CHECK_EQ(input.mouse.sensitivity, 0.25);
+  CHECK(!input.mouse.wakeOnMotion);
   CHECK(input.mouse.scrollButton == std::optional<uint32_t>(BTN_EXTRA));
   CHECK(input.mouse.scrollButtonLock == std::optional<bool>(true));
   CHECK(input.mouse.leftHanded == std::optional<bool>(true));
@@ -3404,6 +3407,7 @@ scroll_button_lock = false
   if (touchpad != nullptr) {
     CHECK(touchpad->tap == std::optional<bool>(false));
     CHECK(touchpad->tapAndDrag == std::optional<bool>(false));
+    CHECK(!touchpad->wakeOnMotion.has_value());
     CHECK(touchpad->dragLock == std::optional(umbriel::DragLock::Off));
     CHECK(touchpad->naturalScroll == std::optional<bool>(false));
     CHECK(touchpad->leftHanded == std::optional<bool>(false));
@@ -3425,6 +3429,7 @@ scroll_button_lock = false
     CHECK(mouse->accelProfile.has_value());
     CHECK(mouse->accelProfile->kind == umbriel::AccelProfile::Kind::Flat);
     CHECK(mouse->sensitivity == std::optional<double>(-0.5));
+    CHECK(mouse->wakeOnMotion == std::optional<bool>(true));
     CHECK(!mouse->clickMethod.has_value());
     CHECK(mouse->scrollButton == std::optional<uint32_t>(BTN_SIDE));
     CHECK(mouse->scrollButtonLock == std::optional<bool>(false));
@@ -3440,6 +3445,33 @@ UMBRIEL_TEST(mouseAccelerationPreservesDeviceProfileByDefault) {
   const umbriel::Config defaults;
   CHECK(!defaults.input.mouse.accelProfile.has_value());
   CHECK_EQ(defaults.input.mouse.sensitivity, 0.0);
+  CHECK(defaults.input.mouse.wakeOnMotion);
+}
+
+UMBRIEL_TEST(pointerMotionWakeInheritsAndOverridesPerDevice) {
+  umbriel::Config config;
+  auto& input = config.input;
+  input.devices.resize(3);
+  input.devices[0].name = "Quiet Mouse";
+  input.devices[0].wakeOnMotion = false;
+  input.devices[1].name = "Wake Mouse";
+  input.devices[1].wakeOnMotion = true;
+  input.devices[2].name = "Inherited Touchpad";
+  CHECK(input.pointerMotionWakes("Unknown Mouse"));
+  CHECK(!input.pointerMotionWakes("Quiet Mouse"));
+  CHECK(input.pointerMotionWakes("Wake Mouse"));
+  CHECK(input.pointerMotionWakes("Inherited Touchpad"));
+  input.mouse.wakeOnMotion = false;
+  CHECK(!input.pointerMotionWakes("Unknown Mouse"));
+  CHECK(!input.pointerMotionWakes("Quiet Mouse"));
+  CHECK(input.pointerMotionWakes("Wake Mouse"));
+  CHECK(!input.pointerMotionWakes("Inherited Touchpad"));
+  CHECK(!input.pointerMotionWakes("wake mouse"));
+  CHECK(!input.pointerMotionWakes(""));
+  input.devices[0].wakeOnMotion = true;
+  CHECK(input.pointerMotionWakes("Quiet Mouse"));
+  input.devices.clear();
+  CHECK(!input.pointerMotionWakes("Quiet Mouse"));
 }
 
 UMBRIEL_TEST(mouseScrollButtonDefaultsToUnset) {

@@ -219,4 +219,9 @@ namespace umbriel {
     return found == devices.end() ? nullptr : &*found;
   }
 
+  bool Config::Input::pointerMotionWakes(std::string_view name) const {
+    const Device* device = findDevice(name);
+    return device != nullptr ? device->wakeOnMotion.value_or(mouse.wakeOnMotion) : mouse.wakeOnMotion;
+  }
+
 } // namespace umbriel

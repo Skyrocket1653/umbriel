@@ -428,7 +428,7 @@ umbriel msg dpms-off DP-1
 umbriel msg dpms-on DP-1
 ```
 
-The bare actions target every configured output. Input wakes all monitors when every output is powered off. Outputs disabled with `enabled = false` are not affected. DPMS does not remove an output from the logical desktop, move its windows, or exclude it from a whole-desktop capture.
+The bare actions target every configured output. Input wakes all monitors when every output is powered off. Set `input.mouse.wake_on_motion = false` to disable pointer-motion wake by default; a matching `[[input.device]]` entry can override this with `wake_on_motion`. Button presses and other input retain their existing wake behavior. Outputs disabled with `enabled = false` are not affected. DPMS does not remove an output from the logical desktop, move its windows, or exclude it from a whole-desktop capture.
 
 ## Live reconfiguration
 

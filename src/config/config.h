@@ -1277,6 +1277,8 @@ namespace umbriel {
         std::optional<bool> scrollButtonLock;
         double sensitivity = 0.0;
         int scrollWheelStep = 60;
+        // Pointer motion still reports idle activity when disabled, but does not wake DPMS outputs.
+        bool wakeOnMotion = true;
         bool operator==(const Mouse&) const = default;
       } mouse;
 
@@ -1352,11 +1354,13 @@ namespace umbriel {
         std::optional<TapButtonMap> tapButtonMap;
         std::optional<uint32_t> scrollButton;
         std::optional<bool> scrollButtonLock;
+        std::optional<bool> wakeOnMotion;
         bool operator==(const Device&) const = default;
       };
 
       std::vector<Device> devices;
       const Device* findDevice(std::string_view name) const;
+      bool pointerMotionWakes(std::string_view name) const;
       bool operator==(const Input&) const = default;
     } input;
 

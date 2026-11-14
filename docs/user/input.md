@@ -178,11 +178,14 @@ left_handed = false
 # accel_profile = "flat"
 sensitivity = 0.0
 scroll_wheel_step = 60
+wake_on_motion = true
 # scroll_button = "MouseBack"
 # scroll_button_lock = false
 ```
 
 `sensitivity` ranges from -1.0 to 1.0. `scroll_wheel_step` accepts 1 to 1000 logical pixels per layout-scroll action. `left_handed` swaps the primary and secondary buttons; omit it to preserve the device default.
+
+`wake_on_motion` defaults to `true`. Set it to `false` to keep relative and absolute pointer motion from waking DPMS-powered-off monitors. This covers mice, touchpads, and virtual pointers. Motion still moves the pointer and reports idle activity. Mouse button presses, wheel scrolling, keyboard presses, touch, and tablet input retain their existing wake behavior. The global setting is the default for every pointer device. A matching `[[input.device]]` entry can override it with its own `wake_on_motion`; omitting that key inherits the global value. Both settings take effect on config reload. Explicit `dpms-on` commands, including those from an external idle daemon, are still honored.
 
 Omitting `accel_profile` preserves the device default. A custom libinput curve uses this form:
 
@@ -219,6 +222,7 @@ click_method = "clickfinger"
 name = "Acme Gaming Mouse"
 accel_profile = "flat"
 sensitivity = 0.0
+wake_on_motion = false
 
 [[input.device]]
 name = "Acme Controller Touchpad"

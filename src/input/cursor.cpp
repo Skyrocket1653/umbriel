@@ -1541,7 +1541,11 @@ namespace umbriel {
   void Cursor::handleMotion(void* data) {
     auto* event = static_cast<wlr_pointer_motion_event*>(data);
     noteActivity();
-    m_server->notifyInputActivity();
+    if (config().input.pointerMotionWakes(event->pointer->base.name != nullptr ? event->pointer->base.name : "")) {
+      m_server->notifyInputActivity();
+    } else {
+      m_server->notifyIdleActivity();
+    }
 
     if (InputCapture* capture = m_server->inputCapture(); capture != nullptr) {
       if (m_server->physicalInputDevice(&event->pointer->base)) {
@@ -1614,7 +1618,11 @@ namespace umbriel {
   void Cursor::handleMotionAbsolute(void* data) {
     auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
     noteActivity();
-    m_server->notifyInputActivity();
+    if (config().input.pointerMotionWakes(event->pointer->base.name != nullptr ? event->pointer->base.name : "")) {
+      m_server->notifyInputActivity();
+    } else {
+      m_server->notifyIdleActivity();
+    }
     if (m_server->physicalInputDevice(&event->pointer->base)) {
       cancelUnclaimedXwaylandPointerRestore();
     }
