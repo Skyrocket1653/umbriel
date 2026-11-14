@@ -179,6 +179,15 @@ numlock_toggle = true
 # follows_mouse = "sloppy" # "off", "sloppy", or "always"; always also refocuses after layout and workspace changes.
 # hover_raises = false # Hover focuses only; clicks and keybinds raise.
 
+# Ignore pointer motion as a DPMS wake source; clicks, wheel scrolling, and keyboard input still wake displays.
+#
+# [input.mouse]
+# wake_on_motion = false
+#
+# [[input.device]]
+# name = "YOUR MOUSE NAME"
+# wake_on_motion = false # Override the global default for this exact device name.
+
 # Confine touch input to one display.
 #
 # [input.touch]

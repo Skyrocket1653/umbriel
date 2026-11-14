@@ -92,8 +92,45 @@ mark=$(log_mark)
 wait_for_log_since "$mark" "output 'HEADLESS-1': applied mode="
 wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
 
+# Disabling motion wake must cover relative and absolute pointers, including a zero-delta report.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[input.mouse]
+wake_on_motion = false
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg dpms-off > /dev/null
+mark=$(log_mark)
+"$POINTER" 2560 720 relative 0 0 relative 5 5 move 30 30
+assert_no_log_since "$mark" "output 'HEADLESS-1': applied mode=" \
+  "pointer motion woke HEADLESS-1 despite wake_on_motion=false"
+assert_no_log_since "$mark" "output 'HEADLESS-2': applied mode=" \
+  "pointer motion woke HEADLESS-2 despite wake_on_motion=false"
+
+# A click still wakes every output.
+mark=$(log_mark)
+"$POINTER" 2560 720 press 272 release 272
+wait_for_log_since "$mark" "output 'HEADLESS-1': applied mode="
+wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
+
+# A keyboard press also wakes every output while motion wake is disabled.
+"$UMBRIEL" msg dpms-off > /dev/null
+mark=$(log_mark)
+"$POINTER" 2560 720 tap 57
+wait_for_log_since "$mark" "output 'HEADLESS-1': applied mode="
+wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
+
+# Reloading the option back to true restores motion wake without restarting.
+sed -i 's/wake_on_motion = false/wake_on_motion = true/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg dpms-off > /dev/null
+mark=$(log_mark)
+"$POINTER" 2560 720 relative 5 5
+wait_for_log_since "$mark" "output 'HEADLESS-1': applied mode="
+wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
+
 if ((failures > 0)); then
   exit 1
 fi
 
-echo "DPMS ignores triggering releases, preserves named power state, and wakes globally on new input"
+echo "DPMS preserves named power state and makes pointer-motion wake configurable"
