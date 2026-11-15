@@ -227,6 +227,23 @@ namespace umbriel {
       return true;
     }
 
+    template <typename T> const registry::Fields<T>& mouseActivitySettings() {
+      static const registry::Fields<T> fields{
+          registry::boolean("enabled", &T::enabled),
+          registry::real("threshold_px", 0.0, 10000.0, &T::thresholdPx),
+          registry::integer("window_ms", 1, 10000, &T::windowMs),
+      };
+      return fields;
+    }
+
+    template <typename T, typename S> const registry::Fields<T>& mouseActivityFields() {
+      static const registry::Fields<T> fields{
+          registry::table("sleep", &T::sleep, mouseActivitySettings<S>()),
+          registry::table("wake", &T::wake, mouseActivitySettings<S>()),
+      };
+      return fields;
+    }
+
     const registry::Fields<Config::Input>& inputFields() {
       using registry::boolean;
       using registry::Case;
@@ -312,6 +329,7 @@ namespace umbriel {
           boolean("left_handed", &In::Mouse::leftHanded),
           real("sensitivity", -1.0, 1.0, &In::Mouse::sensitivity),
           integer("scroll_wheel_step", 1, 1000, &In::Mouse::scrollWheelStep),
+          table("activity", &In::Mouse::activity, mouseActivityFields<MouseActivity, MouseActivitySettings>()),
           boolean("scroll_button_lock", &In::Mouse::scrollButtonLock),
           accelProfileField(&In::Mouse::accelProfile),
           choice("scroll_button", &In::Mouse::scrollButton, scrollButtons, Case::Fold),
@@ -381,6 +399,9 @@ namespace umbriel {
           integer("repeat_rate", 0, 1000, &In::Device::repeatRate),
           integer("repeat_delay", 0, 10000, &In::Device::repeatDelay),
           boolean("enabled", &In::Device::enabled),
+          table(
+              "activity", &In::Device::activity, mouseActivityFields<MouseActivityOverrides, MouseActivityOverride>()
+          ),
           boolean("tap", &In::Device::tap),
           boolean("tap_and_drag", &In::Device::tapAndDrag),
           choice("drag_lock", &In::Device::dragLock, dragLocks, Case::Fold),
