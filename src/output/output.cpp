@@ -1498,6 +1498,9 @@ namespace umbriel {
       return false;
     }
     applyOutputEffects();
+    if (Cursor* cursor = m_server->cursor()) {
+      cursor->resetMotionActivity();
+    }
 
     if (powered) {
       m_gammaDirty = true;

@@ -110,6 +110,43 @@ scroll_wheel_step = 60
 | `scroll_button`      | unset          | Scroll by moving the mouse while this button is held: `MouseLeft`, `MouseRight`, `MouseMiddle`, `MouseBack`, or `MouseForward`. |
 | `scroll_button_lock` | `false`        | Toggle `scroll_button` scrolling with a press instead of holding.                                                               |
 
+### Mouse idle and wake activity
+
+Mouse motion can be filteredseparately while displays are on and off:
+
+```toml
+# Motion that resets idle while any desktop output is powered on.
+[input.mouse.activity.sleep]
+enabled = true
+threshold_px = 5.0
+window_ms = 250
+
+# Motion that resets idle and wakes displays when all desktop outputs are powered off.
+[input.mouse.activity.wake]
+enabled = false
+threshold_px = 12.0
+window_ms = 300
+
+[[input.device]]
+name = "Acme Gaming Mouse"
+
+[input.device.activity.sleep]
+threshold_px = 8.0
+# enabled inherits input.mouse.activity.sleep.enabled if omitted.
+# window_ms inherits input.mouse.activity.sleep.window_ms if omitted.
+
+[input.device.activity.wake]
+enabled = true
+threshold_px = 16.0
+# window_ms inherits input.mouse.activity.wake.window_ms if omitted.
+```
+
+Both global tables default to `enabled = true`, `threshold_px = 0.0`, and `window_ms = 250`, so every finite motion event counts as activity until filtering is configured. `enabled = false` prevents motion from resetting idle or waking displays in that state. These settings apply to libinput mouse-class pointers, including trackballs; touchpads, virtual pointers, keyboard, buttons, scrolling, touch and tablet activity retain their existing behavior.
+
+`threshold_px` accepts 0 to 10000 logical pixels. Net displacement must exceed this distance within `window_ms`, which accepts 1 to 10000 milliseconds. Relative motion is measured before per-window multipliers; absolute motion uses successive device positions mapped to layout coordinates, with the first event establishing a baseline when filtering is enabled. Each device tracks its own displacement. Opposing motion cancels, the accumulation interval is bounded, and qualifying motion starts a fresh interval. Very slow deliberate movement may also be filtered. Pointer movement and application input are unaffected.
+
+Every omitted device field independently inherits its corresponding global field; omitting a device table inherits the whole global table. Config reloads take effect on the next motion event; changes to effective settings discard pending movement. Successful DPMS transitions also discard pending movement. With mixed output power states, `sleep` applies while any desktop output is powered on, matching the compositor's existing motion-wake policy. Explicit `dpms-on` commands, including those from an external idle daemon, are still honored.
+
 ## Tablet
 
 ```toml
@@ -179,6 +216,7 @@ click_method = "clickfinger"
 name = "Acme Gaming Mouse"
 accel_profile = "flat"
 sensitivity = 0.0
+activity.wake.enabled = false
 
 [[input.device]]
 name = "Acme Controller Touchpad"

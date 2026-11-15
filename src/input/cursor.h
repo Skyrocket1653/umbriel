@@ -1,4 +1,5 @@
 #pragma once
+#include "input/motion_activity.h"
 #include "layout/drop_target.h"
 #include "scene/ssd_frame_geometry.h"
 #include "view/window_region.h"
@@ -187,6 +188,7 @@ namespace umbriel {
     bool isResizingWorkspace(const Workspace* workspace) const;
 
     void attachInputDevice(wlr_input_device* device);
+    void resetMotionActivity();
     void applyConfig();
     // Recheck a stationary drag when its workspace layout or drop-zone policy changes.
     void refreshDropZonePreview();
@@ -311,6 +313,15 @@ namespace umbriel {
     void warnMouseSensitivity(
         View* view, bool showWarning, std::string_view stream, bool nonFinite, std::string_view deviceName
     );
+    struct MotionActivityDevice {
+      Cursor* cursor = nullptr;
+      wlr_input_device* device = nullptr;
+      MotionActivity activity;
+      wl_listener destroy{};
+      ~MotionActivityDevice() { wl_list_remove(&destroy.link); }
+    };
+    void noteMotionActivity(wlr_input_device* device, uint32_t time, double x, double y, bool absolute);
+    static void onMotionActivityDeviceDestroy(wl_listener* listener, void* data);
     void handleMotion(void* data);
     void handleMotionAbsolute(void* data);
     void handleButton(void* data);
@@ -510,6 +521,7 @@ namespace umbriel {
     wl_event_source* m_sceneRefocusIdle = nullptr;
     bool m_compositorOwnsCursor = false;
     bool m_cursorHidden = false;
+    std::vector<std::unique_ptr<MotionActivityDevice>> m_motionActivityDevices;
     std::optional<uint64_t> m_lastSensitivityWarningMs;
     std::string m_compositorCursorName;
     // What the focused client last asked the cursor to be, replayed when a

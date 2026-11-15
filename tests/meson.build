@@ -3,6 +3,7 @@
 unit_tests = [
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
   ['gesture-physics', ['unit/gesture_physics.cpp'], []],
+  ['motion-activity', ['unit/motion_activity.cpp'], []],
   ['motion-scale', ['unit/motion_scale.cpp'], []],
   ['mouse-rules', ['unit/mouse_rules.cpp'], []],
   ['overview-preview-geometry', ['unit/overview_preview_geometry.cpp'], [umbriel_core_dep]],
