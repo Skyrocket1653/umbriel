@@ -92,8 +92,36 @@ mark=$(log_mark)
 wait_for_log_since "$mark" "output 'HEADLESS-1': applied mode="
 wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
 
+# Mouse-specific filtering does not affect virtual pointers.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[input.mouse.activity.wake]
+enabled = false
+threshold_px = 100
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg dpms-off > /dev/null
+mark=$(log_mark)
+"$POINTER" 2560 720 relative 5 5 move 30 30
+wait_for_log_since "$mark" "output 'HEADLESS-1': applied mode="
+wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
+
+# A click still wakes every output.
+"$UMBRIEL" msg dpms-off > /dev/null
+mark=$(log_mark)
+"$POINTER" 2560 720 press 272 release 272
+wait_for_log_since "$mark" "output 'HEADLESS-1': applied mode="
+wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
+
+# A keyboard press also wakes every output while motion wake is disabled.
+"$UMBRIEL" msg dpms-off > /dev/null
+mark=$(log_mark)
+"$POINTER" 2560 720 tap 57
+wait_for_log_since "$mark" "output 'HEADLESS-1': applied mode="
+wait_for_log_since "$mark" "output 'HEADLESS-2': applied mode="
+
 if ((failures > 0)); then
   exit 1
 fi
 
-echo "DPMS ignores triggering releases, preserves named power state, and wakes globally on new input"
+echo "DPMS preserves named power state and virtual pointer wake"
