@@ -3358,6 +3358,10 @@ tap_button_map = "left_middle_right"
 [input.mouse]
 left_handed = true
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
+activity.sleep.enabled = false
+activity.wake.enabled = false
+activity.sleep.threshold_px = 5.0
+activity.wake.window_ms = 300
 sensitivity = 0.25
 scroll_button = "MouseForward"
 scroll_button_lock = true
@@ -3388,6 +3392,8 @@ tap_button_map = "left_right_middle"
 name = "Acme Gaming Mouse"
 accel_profile = "flat"
 sensitivity = -0.5
+activity.wake.enabled = true
+activity.wake.threshold_px = 8.0
 scroll_button = "MouseBack"
 scroll_button_lock = false
 )");
@@ -3403,6 +3409,10 @@ scroll_button_lock = false
   CHECK_EQ(input.mouse.accelProfile->step, 0.2);
   CHECK_EQ(input.mouse.accelProfile->points, std::vector<double>({0.0, 0.5, 1.0, 2.0}));
   CHECK_EQ(input.mouse.sensitivity, 0.25);
+  CHECK(!input.mouse.activity.sleep.enabled);
+  CHECK(!input.mouse.activity.wake.enabled);
+  CHECK_EQ(input.mouse.activity.sleep.thresholdPx, 5.0);
+  CHECK_EQ(input.mouse.activity.wake.windowMs, 300);
   CHECK(input.mouse.scrollButton == std::optional<uint32_t>(BTN_EXTRA));
   CHECK(input.mouse.scrollButtonLock == std::optional<bool>(true));
   CHECK(input.mouse.leftHanded == std::optional<bool>(true));
@@ -3439,6 +3449,7 @@ scroll_button_lock = false
   if (touchpad != nullptr) {
     CHECK(touchpad->tap == std::optional<bool>(false));
     CHECK(touchpad->tapAndDrag == std::optional<bool>(false));
+    CHECK(!touchpad->activity.wake.enabled.has_value());
     CHECK(touchpad->dragLock == std::optional(umbriel::DragLock::Off));
     CHECK(touchpad->naturalScroll == std::optional<bool>(false));
     CHECK(touchpad->leftHanded == std::optional<bool>(false));
@@ -3460,6 +3471,8 @@ scroll_button_lock = false
     CHECK(mouse->accelProfile.has_value());
     CHECK(mouse->accelProfile->kind == umbriel::AccelProfile::Kind::Flat);
     CHECK(mouse->sensitivity == std::optional<double>(-0.5));
+    CHECK(mouse->activity.wake.enabled == std::optional<bool>(true));
+    CHECK(mouse->activity.wake.thresholdPx == std::optional<double>(8.0));
     CHECK(!mouse->clickMethod.has_value());
     CHECK(mouse->scrollButton == std::optional<uint32_t>(BTN_SIDE));
     CHECK(mouse->scrollButtonLock == std::optional<bool>(false));
@@ -3475,6 +3488,8 @@ UMBRIEL_TEST(mouseAccelerationPreservesDeviceProfileByDefault) {
   const umbriel::Config defaults;
   CHECK(!defaults.input.mouse.accelProfile.has_value());
   CHECK_EQ(defaults.input.mouse.sensitivity, 0.0);
+  CHECK(defaults.input.mouse.activity.sleep.enabled);
+  CHECK(defaults.input.mouse.activity.wake.enabled);
 }
 
 UMBRIEL_TEST(mouseScrollButtonDefaultsToUnset) {

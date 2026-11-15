@@ -532,3 +532,71 @@ UMBRIEL_TEST(mouseDeviceOverridesRequireUniqueNonemptyNamesWithinEachWindowRule)
   CHECK_EQ(loaded.config.windowRules.at(0).mouse.devices.size(), size_t{1});
   CHECK_EQ(loaded.config.windowRules.at(0).mouse.forDevice("First Mouse").wheelMultiplier.value_or(1.0), 0.5);
 }
+
+UMBRIEL_TEST(mouseActivityNestedTablesResolveIndependentStateOverrides) {
+  const auto loaded = load(toml::parse(R"(
+[input.mouse.activity.sleep]
+enabled = false
+threshold_px = 5.0
+window_ms = 250
+[input.mouse.activity.wake]
+enabled = true
+threshold_px = 12.0
+window_ms = 300
+[[input.device]]
+name = "Gaming Mouse"
+[input.device.activity.sleep]
+threshold_px = 8.0
+[input.device.activity.wake]
+enabled = false
+window_ms = 400
+)"));
+  CHECK(loaded.messages.empty());
+  const auto& input = loaded.config.input;
+  const auto* device = input.findDevice("Gaming Mouse");
+  CHECK(device != nullptr);
+  if (device != nullptr) {
+    const auto sleep = device->activity.sleep.resolve(input.mouse.activity.sleep);
+    CHECK(!sleep.enabled);
+    CHECK_EQ(sleep.thresholdPx, 8.0);
+    CHECK_EQ(sleep.windowMs, 250);
+    const auto wake = device->activity.wake.resolve(input.mouse.activity.wake);
+    CHECK(!wake.enabled);
+    CHECK_EQ(wake.thresholdPx, 12.0);
+    CHECK_EQ(wake.windowMs, 400);
+  }
+  const auto schema = umbriel::registry::describeConfig(umbriel::Config{});
+  for (const std::string prefix : {"input.mouse.activity.", "input.device[].activity."}) {
+    for (const std::string state : {"sleep.", "wake."}) {
+      for (const std::string key : {"enabled", "threshold_px", "window_ms"}) {
+        CHECK(std::ranges::any_of(schema, [&](const auto& field) { return field.path == prefix + state + key; }));
+      }
+    }
+  }
+}
+
+UMBRIEL_TEST(mouseActivityInvalidValuesUseNormalConfigValidation) {
+  const auto loaded = load(toml::parse(R"(
+[input.mouse.activity.sleep]
+enabled = "yes"
+threshold_px = nan
+window_ms = 0
+[input.mouse.activity.wake]
+threshold_px = -1.0
+window_ms = 10001
+[[input.device]]
+name = "Gaming Mouse"
+[input.device.activity.wake]
+threshold_px = "small"
+window_ms = "quick"
+)"));
+  CHECK(!loaded.messages.empty());
+  CHECK(loaded.config.input.mouse.activity.sleep.enabled);
+  CHECK_EQ(loaded.config.input.mouse.activity.sleep.thresholdPx, 0.0);
+  CHECK_EQ(loaded.config.input.mouse.activity.sleep.windowMs, 1);
+  CHECK_EQ(loaded.config.input.mouse.activity.wake.thresholdPx, 0.0);
+  CHECK_EQ(loaded.config.input.mouse.activity.wake.windowMs, 10000);
+  const auto& override = loaded.config.input.devices.at(0).activity.wake;
+  CHECK(!override.thresholdPx.has_value());
+  CHECK(!override.windowMs.has_value());
+}
