@@ -30,6 +30,7 @@
 #include <cstring>
 #include <ctime>
 #include <drm_fourcc.h>
+#include <iterator>
 #include <linux/input-event-codes.h>
 #include <limits>
 #include "wlr.h"
@@ -196,6 +197,7 @@ namespace umbriel {
   }
 
   Cursor::~Cursor() {
+    m_motionActivityDevices.clear();
     if (m_dropZoneDwellTimer != nullptr) {
       wl_event_source_remove(m_dropZoneDwellTimer);
     }
@@ -1542,10 +1544,54 @@ namespace umbriel {
     }
   }
 
+  void Cursor::onMotionActivityDeviceDestroy(wl_listener* listener, void* /*data*/) {
+    MotionActivityDevice* state = wl_container_of(listener, state, destroy);
+    std::erase_if(state->cursor->m_motionActivityDevices, [state](const auto& entry) { return entry.get() == state; });
+  }
+
+  void Cursor::resetMotionActivity() {
+    for (auto& state : m_motionActivityDevices) {
+      state->activity = MotionActivity{};
+    }
+  }
+
+  void Cursor::noteMotionActivity(wlr_input_device* device, uint32_t time, double x, double y, bool absolute) {
+    libinput_device* libinputDevice =
+        wlr_input_device_is_libinput(device) ? wlr_libinput_get_device_handle(device) : nullptr;
+    if (libinputDevice == nullptr || libinput_device_config_tap_get_finger_count(libinputDevice) > 0) {
+      m_server->notifyInputActivity();
+      return;
+    }
+    auto found =
+        std::ranges::find_if(m_motionActivityDevices, [device](const auto& entry) { return entry->device == device; });
+    if (found == m_motionActivityDevices.end()) {
+      auto state = std::make_unique<MotionActivityDevice>();
+      state->cursor = this;
+      state->device = device;
+      state->destroy.notify = onMotionActivityDeviceDestroy;
+      wl_signal_add(&device->events.destroy, &state->destroy);
+      m_motionActivityDevices.push_back(std::move(state));
+      found = std::prev(m_motionActivityDevices.end());
+    }
+    const bool powered = std::ranges::any_of(m_server->outputs(), [](const auto& output) {
+      return output->desktopEnabled() && !output->dpmsOff();
+    });
+    const auto& input = config().input;
+    const MouseActivitySettings& defaults = powered ? input.mouse.activity.sleep : input.mouse.activity.wake;
+    const std::string_view name = device->name != nullptr ? device->name : "";
+    const auto* override = input.findDevice(name);
+    const auto settings = override != nullptr
+        ? (powered ? override->activity.sleep : override->activity.wake).resolve(defaults)
+        : defaults;
+    if ((*found)->activity.update(x, y, absolute, time, settings)) {
+      m_server->notifyInputActivity();
+    }
+  }
+
   void Cursor::handleMotion(void* data) {
     auto* event = static_cast<wlr_pointer_motion_event*>(data);
     noteActivity();
-    m_server->notifyInputActivity();
+    noteMotionActivity(&event->pointer->base, event->time_msec, event->delta_x, event->delta_y, false);
 
     if (InputCapture* capture = m_server->inputCapture(); capture != nullptr) {
       if (m_server->physicalInputDevice(&event->pointer->base)) {
@@ -1618,7 +1664,10 @@ namespace umbriel {
   void Cursor::handleMotionAbsolute(void* data) {
     auto* event = static_cast<wlr_pointer_motion_absolute_event*>(data);
     noteActivity();
-    m_server->notifyInputActivity();
+    double lx = 0;
+    double ly = 0;
+    wlr_cursor_absolute_to_layout_coords(m_cursor, &event->pointer->base, event->x, event->y, &lx, &ly);
+    noteMotionActivity(&event->pointer->base, event->time_msec, lx, ly, true);
     if (m_server->physicalInputDevice(&event->pointer->base)) {
       cancelUnclaimedXwaylandPointerRestore();
     }
@@ -1628,10 +1677,6 @@ namespace umbriel {
     if (m_activeConstraint != nullptr && m_activeConstraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
       return;
     }
-
-    double lx = 0;
-    double ly = 0;
-    wlr_cursor_absolute_to_layout_coords(m_cursor, &event->pointer->base, event->x, event->y, &lx, &ly);
 
     if (InputCapture* capture = m_server->inputCapture(); capture != nullptr) {
       if (m_server->physicalInputDevice(&event->pointer->base)) {
