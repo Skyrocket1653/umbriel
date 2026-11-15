@@ -4,6 +4,7 @@
 #include "config/effects.h"
 #include "config/keybind_parse.h"
 #include "config/mouse.h"
+#include "config/mouse_activity.h"
 #include "config/value_parse.h"
 #include "config/window_position.h"
 #include "core/animation.h"
@@ -1281,6 +1282,7 @@ namespace umbriel {
         std::optional<bool> scrollButtonLock;
         double sensitivity = 0.0;
         int scrollWheelStep = 60;
+        MouseActivity activity;
         bool operator==(const Mouse&) const = default;
       } mouse;
 
@@ -1358,6 +1360,7 @@ namespace umbriel {
         std::optional<TapButtonMap> tapButtonMap;
         std::optional<uint32_t> scrollButton;
         std::optional<bool> scrollButtonLock;
+        MouseActivityOverrides activity;
         bool operator==(const Device&) const = default;
       };
 

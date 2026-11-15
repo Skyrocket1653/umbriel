@@ -179,6 +179,32 @@ numlock_toggle = true
 # follows_mouse = "sloppy" # "off", "sloppy", or "always"; always also refocuses after layout and workspace changes.
 # hover_raises = false # Hover focuses only; clicks and keybinds raise.
 
+# Filter mouse motion before resetting idle or waking displays. The defaults for both activity tables are:
+# enabled = true, threshold_px = 0.0 (every motion counts), window_ms = 250.
+#
+# [input.mouse.activity.sleep] # While any desktop output is powered on.
+# enabled = true
+# threshold_px = 5.0
+# window_ms = 250
+#
+# [input.mouse.activity.wake] # While all desktop outputs are powered off.
+# enabled = false
+# threshold_px = 12.0
+# window_ms = 300
+#
+# [[input.device]]
+# name = "YOUR MOUSE NAME"
+#
+# [input.device.activity.sleep]
+# threshold_px = 8.0
+# enabled inherits input.mouse.activity.sleep.enabled if omitted.
+# window_ms inherits input.mouse.activity.sleep.window_ms if omitted.
+#
+# [input.device.activity.wake]
+# enabled = true
+# threshold_px = 16.0
+# window_ms inherits input.mouse.activity.wake.window_ms if omitted.
+
 # Confine touch input to one display.
 #
 # [input.touch]
